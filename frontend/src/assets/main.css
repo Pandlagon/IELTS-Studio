@@ -1,0 +1,766 @@
+/* ─── CSS Variables ─────────────────────────────────────────────── */
+:root {
+  --bg-primary: #F7F4EF;
+  --bg-white: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-nav: rgba(247, 244, 239, 0.92);
+
+  --color-primary: #1B4332;
+  --color-primary-dark: #0D2B1F;
+  --color-primary-hover: #2D6A4F;
+  --color-accent: #52B788;
+  --color-accent-light: #B7E4C7;
+
+  --text-primary: #1A1A1A;
+  --text-secondary: #4A4A4A;
+  --text-muted: #9CA3AF;
+
+  --border-color: #E5E0D8;
+  --border-light: #F0EDE8;
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.10);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  --font-sans: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Lora', Georgia, serif;
+
+  --nav-height: 64px;
+  --container-max: 1200px;
+  --transition: 0.2s ease;
+}
+
+/* ─── Reset ─────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* ─── Layout Utilities ───────────────────────────────────────────── */
+.container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.page-wrapper {
+  min-height: 100vh;
+  padding-top: var(--nav-height);
+  background-color: var(--bg-primary);
+}
+
+/* ─── Typography ─────────────────────────────────────────────────── */
+.text-primary { color: var(--color-primary); }
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 12px; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+/* ─── Cards ──────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
+  padding: 24px;
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+.card-sm {
+  padding: 16px;
+  border-radius: var(--radius-md);
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  padding: 12px 28px;
+  border-radius: var(--radius-full);
+  font-size: 15px;
+  font-weight: 600;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(27, 67, 50, 0.3);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-primary);
+  padding: 10px 24px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+  transition: all var(--transition);
+  cursor: pointer;
+  border: none;
+}
+
+.btn-ghost:hover {
+  background-color: rgba(27, 67, 50, 0.06);
+  color: var(--color-primary);
+}
+
+/* ─── Badges ─────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-green {
+  background-color: #D8F3DC;
+  color: var(--color-primary);
+}
+
+.badge-amber {
+  background-color: #FFF3CD;
+  color: #856404;
+}
+
+.badge-blue {
+  background-color: #DBEAFE;
+  color: #1D4ED8;
+}
+
+.badge-red {
+  background-color: #FEE2E2;
+  color: #DC2626;
+}
+
+/* ─── Form Elements ──────────────────────────────────────────────── */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  background: var(--bg-white);
+  color: var(--text-primary);
+  transition: border-color var(--transition), box-shadow var(--transition);
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.08);
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ─── Divider ────────────────────────────────────────────────────── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 16px 0;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--border-color);
+}
+
+/* ─── Section ────────────────────────────────────────────────────── */
+.section {
+  padding: 80px 0;
+}
+
+.section-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.section-subtitle {
+  font-size: 15px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+/* ─── Tag Badge ──────────────────────────────────────────────────── */
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #E8F5E9;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  margin-bottom: 16px;
+  border: 1px solid #C8E6C9;
+}
+
+.tag-dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-accent);
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ─── Element Plus Overrides ─────────────────────────────────────── */
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary) !important;
+  --el-button-border-color: var(--color-primary) !important;
+  --el-button-hover-bg-color: var(--color-primary-hover) !important;
+  --el-button-hover-border-color: var(--color-primary-hover) !important;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cardFlip {
+  0% { transform: perspective(600px) rotateY(0deg); }
+  50% { transform: perspective(600px) rotateY(90deg); }
+  100% { transform: perspective(600px) rotateY(0deg); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s ease both;
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease both;
+}
+
+/* ─── Grid Utilities ─────────────────────────────────────────────── */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+@media (max-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .container { padding: 0 16px; }
+  .section { padding: 48px 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   全局弹窗（el-dialog）样式覆盖
+   统一为项目风格：暖白卡片、深绿标题、圆角、精细阴影
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 遮罩层：统一半透明暗色 */
+.el-overlay {
+  background-color: rgba(10, 20, 15, 0.45) !important;
+  backdrop-filter: blur(2px);
+}
+
+/* 弹窗主体 */
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.14), 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid var(--border-light) !important;
+  background: var(--bg-white) !important;
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+/* 弹窗头部 */
+.el-dialog__header {
+  padding: 22px 28px 18px !important;
+  border-bottom: 1px solid var(--border-light) !important;
+  margin-right: 0 !important;
+  background: linear-gradient(135deg, #f9f7f4 0%, var(--bg-white) 100%);
+}
+
+.el-dialog__title {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  color: var(--color-primary) !important;
+  letter-spacing: -0.2px;
+}
+
+/* 关闭按钮 */
+.el-dialog__headerbtn {
+  top: 18px !important;
+  right: 20px !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  background: var(--border-light) !important;
+  transition: background var(--transition), transform var(--transition) !important;
+}
+.el-dialog__headerbtn:hover {
+  background: var(--border-color) !important;
+  transform: scale(1.08);
+}
+.el-dialog__headerbtn .el-dialog__close {
+  color: var(--text-secondary) !important;
+  font-size: 13px !important;
+}
+
+/* 弹窗内容区 */
+.el-dialog__body {
+  padding: 24px 28px !important;
+  color: var(--text-primary) !important;
+}
+
+/* 弹窗底部按钮区 */
+.el-dialog__footer {
+  padding: 16px 28px 24px !important;
+  border-top: 1px solid var(--border-light) !important;
+  background: #faf9f7;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 底部按钮统一样式 */
+.el-dialog__footer .el-button {
+  border-radius: var(--radius-full) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  padding: 9px 22px !important;
+  height: auto !important;
+  transition: all var(--transition) !important;
+}
+
+/* 取消按钮（默认按钮） */
+.el-dialog__footer .el-button:not(.el-button--primary) {
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-white) !important;
+}
+.el-dialog__footer .el-button:not(.el-button--primary):hover {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  background: #f0f7f4 !important;
+}
+
+/* 主操作按钮 */
+.el-dialog__footer .el-button--primary {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #fff !important;
+}
+.el-dialog__footer .el-button--primary:hover {
+  background: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(27, 67, 50, 0.25) !important;
+}
+
+/* 表单标签 */
+.el-dialog .el-form-item__label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+  padding-bottom: 6px !important;
+}
+
+/* 输入框 */
+.el-dialog .el-input__wrapper,
+.el-dialog .el-textarea__inner {
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border-color) !important;
+  box-shadow: none !important;
+  background: var(--bg-primary) !important;
+  font-size: 14px !important;
+  transition: border-color var(--transition), box-shadow var(--transition) !important;
+}
+.el-dialog .el-input__wrapper:hover,
+.el-dialog .el-textarea__inner:hover {
+  border-color: var(--color-accent) !important;
+}
+.el-dialog .el-input__wrapper.is-focus,
+.el-dialog .el-textarea__inner:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.08) !important;
+  background: var(--bg-white) !important;
+}
+
+/* 字数限制文字 */
+.el-dialog .el-input__count {
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+}
+
+/* Alert 组件（上传提示信息） */
+.el-dialog .el-alert {
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid #b7e4c7 !important;
+  background: #f0faf4 !important;
+  padding: 12px 14px !important;
+}
+.el-dialog .el-alert .el-alert__title {
+  font-size: 13px !important;
+  color: var(--color-primary) !important;
+  line-height: 1.6;
+}
+.el-dialog .el-alert .el-alert__icon {
+  color: var(--color-accent) !important;
+}
+
+/* 居中模式弹窗（center 属性）*/
+.el-dialog.is-align-center .el-dialog__body {
+  text-align: center;
+}
+
+/* 入场动画 */
+.dialog-fade-enter-active .el-dialog {
+  animation: dialogSlideIn 0.22s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   弹窗通用内部组件
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 自定义标题行（带 emoji 图标） */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.dialog-header-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 表单提示文字 */
+.edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.edit-hint svg { flex-shrink: 0; }
+
+/* ─── 本组完成弹窗 ─────────────────────────────────────────────────── */
+.batch-complete-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 4px;
+  text-align: center;
+}
+
+.batch-complete-ring {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8f5ee, #d1ead9);
+  border: 3px solid var(--color-accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  box-shadow: 0 0 0 6px rgba(82, 183, 136, 0.1);
+}
+.batch-complete-ring.gold {
+  background: linear-gradient(135deg, #fef9e7, #fde68a);
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.12);
+}
+.batch-complete-emoji {
+  font-size: 38px;
+  line-height: 1;
+}
+
+.batch-complete-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+
+.batch-complete-text {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.batch-complete-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 28px;
+}
+.bcs-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.bcs-num {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--color-primary);
+  line-height: 1;
+}
+.bcs-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.bcs-divider {
+  font-size: 20px;
+  color: var(--border-color);
+  font-weight: 300;
+}
+
+.batch-complete-footer {
+  padding: 0;
+  width: 100%;
+}
+.batch-complete-footer .el-button {
+  border-radius: var(--radius-md) !important;
+  height: 44px !important;
+  font-size: 15px !important;
+}
+
+/* ─── 考试确认提交弹窗 ──────────────────────────────────────────────── */
+.confirm-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 4px 0 8px;
+}
+
+.confirm-progress-ring {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  background: linear-gradient(135deg, #e8f5ee, #d1ead9);
+  border: 2px solid var(--color-accent-light);
+  border-radius: var(--radius-xl);
+  padding: 14px 28px;
+  margin-bottom: 10px;
+}
+.confirm-answered {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--color-primary);
+  line-height: 1;
+}
+.confirm-slash {
+  font-size: 22px;
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+.confirm-total {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.confirm-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.confirm-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+}
+.confirm-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+}

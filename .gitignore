@@ -1,0 +1,23 @@
+# ─── 编译产物 ───────────────────────────────────────────────
+backend/target/
+frontend/dist/
+frontend/node_modules/
+
+# ─── IDE 配置文件（不同开发者 IDE 不同，不纳入版本控制）────────
+*.idea/
+*.iml
+.vscode/
+*.swp
+
+# ─── 环境变量文件（含密钥，严禁提交）───────────────────────────
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# ─── 系统文件 ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── 日志文件 ───────────────────────────────────────────────
+*.log
+logs/

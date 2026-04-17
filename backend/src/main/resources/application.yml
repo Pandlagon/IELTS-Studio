@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# IELTS Studio 后端配置文件
+# 敏感字段（数据库密码、API Key 等）在生产环境中请通过环境变量注入，不要明文提交到 Git
+# 示例：password: ${DB_PASSWORD}
+# ─────────────────────────────────────────────────────────────────────────────
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api   # 所有接口统一加 /api 前缀
+
+spring:
+  application:
+    name: ielts-studio-backend
+
+  # ─── 数据库连接（MySQL 8）────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://localhost:3306/ielts_studio?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: your_password_here   # ⚠️ 生产环境替换为实际密码或环境变量
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20    # 最大连接数
+      minimum-idle: 5          # 最小空闲连接数
+      connection-timeout: 30000
+
+  # ─── Redis 缓存（可选）──────────────────────────────────────────────────────
+  # 未启用 Redis 时注释掉此段，相关功能将降级为无缓存模式
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:        # 无密码时留空
+      database: 0
+      timeout: 3000ms
+
+  # ─── 文件上传大小限制 ────────────────────────────────────────────────────────
+  servlet:
+    multipart:
+      max-file-size: 20MB     # 单文件最大 20MB
+      max-request-size: 25MB  # 单次请求最大 25MB
+
+# ─── MyBatis-Plus 配置 ──────────────────────────────────────────────────────
+mybatis-plus:
+  type-aliases-package: com.ieltsstudio.entity
+  configuration:
+    map-underscore-to-camel-case: true        # 数据库下划线字段自动映射为驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl   # 开发阶段打印 SQL，生产环境建议关闭
+  global-config:
+    db-config:
+      id-type: auto            # 主键自增
+      logic-delete-field: deleted       # 逻辑删除字段名
+      logic-delete-value: 1             # 已删除标记值
+      logic-not-delete-value: 0         # 未删除标记值
+
+# ─── JWT 配置 ────────────────────────────────────────────────────────────────
+jwt:
+  secret: ielts-studio-jwt-secret-key-2024-very-secure-please-change-in-production
+  # ⚠️ 生产环境必须替换为随机高强度字符串（建议 64 位以上）
+  expiration: 604800000        # Token 有效期：7 天（毫秒）
+  refresh-expiration: 2592000000  # 刷新 Token 有效期：30 天（毫秒，预留）
+
+# ─── AI 解析：DeepSeek ────────────────────────────────────────────────────────
+# 用途：题目结构化解析、写作 AI 评分
+# 申请地址：https://platform.deepseek.com
+ai:
+  deepseek:
+    api-key:  your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
+    base-url: https://api.deepseek.com
+    model: deepseek-chat
+    max-tokens: 8192
+    text-max-chars: 30000   # 输入文本截断阈值，避免超出 Token 限制
+
+# ─── AI 解析：通义千问 Qwen（精准解析）─────────────────────────────────────────
+# 用途：PDF 转图片后调用视觉模型解析，适合多栏/扫描版试卷
+# 申请地址：https://dashscope.aliyuncs.com（阿里云 DashScope）
+qwen:
+  api-key:  your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen-vl-plus
+  ai-max-tokens: 8192
+  max-pages: 20         # 单次精准解析最大页数
+  render-dpi: 160       # PDF 渲染分辨率（DPI），越高越清晰但耗时更长
+  image-quality: 0.82   # 图片压缩质量（0~1），影响 API 传输体积
+
+# ─── MinIO 对象存储（可选）──────────────────────────────────────────────────────
+# 当前版本文件以字节数组方式在内存中处理，MinIO 为预留扩展项
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin123    # ⚠️ 生产环境请修改
+  bucket-name: ielts-studio
+
+# ─── 日志级别 ─────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.ieltsstudio: DEBUG     # 项目自身日志：DEBUG（开发阶段）
+    org.springframework.security: INFO

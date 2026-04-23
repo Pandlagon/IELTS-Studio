@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,6 +30,29 @@ public class AsyncParseService {
     private final AiParseService aiParseService;
     private final QwenAiParseService qwenAiParseService;
     private final ObjectMapper objectMapper;
+
+    private static final Pattern QUESTION_START_MARKER = Pattern.compile(
+            "(?im)^\\s*(questions?\\s*\\d+\\s*[-–]\\s*\\d+|questions?\\s*\\d+|q\\s*\\d+\\s*[-–]\\s*\\d+|q\\s*\\d+|\\d+\\s+[A-Za-z(])");
+
+    private static final Pattern INSTRUCTION_LINE = Pattern.compile(
+            "(?im)^\\s*(complete\\s+the\\s+notes\\s+below\\.?|complete\\s+the\\s+sentences\\s+below\\.?|choose\\s+no\\s+more\\s+than\\s+\\w+\\s+words?\\s+from\\s+the\\s+passage.*|choose\\s+one\\s+word\\s+only.*|choose\\s+two\\s+words?\\s+only.*|choose\\s+three\\s+words?\\s+only.*|write\\s+your\\s+answers?\\s+in\\s+boxes.*|in\\s+boxes?\\s+\\d+\\s*[-–]\\s*\\d+.*|in\\s+boxes?\\s+\\d+.*)$");
+
+    private static final Pattern ANSWER_WORD_LIMIT = Pattern.compile(
+            "(?i)(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)\\s+WORDS?\\s+ONLY|NO\\s+MORE\\s+THAN\\s+(\\d+)\\s+WORDS?",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final Map<String, Integer> WORD_NUM = Map.of(
+            "ONE", 1,
+            "TWO", 2,
+            "THREE", 3,
+            "FOUR", 4,
+            "FIVE", 5,
+            "SIX", 6,
+            "SEVEN", 7,
+            "EIGHT", 8,
+            "NINE", 9,
+            "TEN", 10
+    );
 
     @Async
     public void parseAndSave(Long examId, byte[] fileBytes, String originalFilename,
@@ -296,13 +320,24 @@ public class AsyncParseService {
     private void commitSection(Long examId, Map<String, Object> section,
                                Map<String, Object> parsed, Exam examHint) throws Exception {
         Map<String, Object> data = section != null ? section : parsed;
+        if (!(data instanceof LinkedHashMap)) {
+            data = new LinkedHashMap<>(data);
+        }
         Exam exam = examHint != null ? examHint : examMapper.selectById(examId);
-
-        exam.setParseResult(objectMapper.writeValueAsString(data));
-        exam.setStatus("ready");
 
         List<Map<String, Object>> questions = (List<Map<String, Object>>) data.get("questions");
         List<String> passages = (List<String>) data.get("passages");
+
+        // Fix common reading parse issues:
+        // 1) Question-group instructions (e.g. "Choose NO MORE THAN TWO WORDS...") mistakenly included in passages
+        // 2) Passage and questions coupled in same block → split by detecting question numbering
+        // 3) Ensure answers obey word-count constraints when instruction is present
+        normalizeReadingInstructionsAndSplit(data);
+        questions = (List<Map<String, Object>>) data.get("questions");
+        passages = (List<String>) data.get("passages");
+
+        exam.setParseResult(objectMapper.writeValueAsString(data));
+        exam.setStatus("ready");
         
         // Auto-generate writing task question if questions is empty but passage contains writing task
         if ((questions == null || questions.isEmpty()) && passages != null && !passages.isEmpty()) {
@@ -342,6 +377,10 @@ public class AsyncParseService {
         }
         
         if (questions != null) {
+            // If AI returns duplicated or missing questionNumber (common when multiple small passages are parsed together),
+            // normalize to a stable sequential numbering so UI/DB are consistent.
+            ensureSequentialQuestionNumbers(questions);
+
             exam.setQuestionCount(questions.size());
             for (int i = 0; i < questions.size(); i++) {
                 Map<String, Object> q = questions.get(i);
@@ -373,6 +412,14 @@ public class AsyncParseService {
                     answer = answer.substring(0, 500);
                     log.warn("Exam {} – Question {} answer truncated from {} to 500 chars", examId, question.getQuestionNumber(), ((String) q.get("answer")).length());
                 }
+
+                // For fill questions, if the model produced a statement that already includes the answer verbatim
+                // but did not include any blank marker, convert it into a proper fill-in-the-blank.
+                if ("fill".equals(type)) {
+                    text = ensureFillHasBlank(text, answer);
+                    question.setQuestionText(text);
+                }
+
                 question.setAnswer(answer);
                 question.setExplanation((String) q.getOrDefault("explanation", ""));
                 question.setLocatorText((String) q.getOrDefault("locatorText", ""));
@@ -404,6 +451,171 @@ public class AsyncParseService {
 
         examMapper.updateById(exam);
         log.info("Exam {} committed – {} questions", examId, questions != null ? questions.size() : 0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void normalizeReadingInstructionsAndSplit(Map<String, Object> data) {
+        Object passagesObj = data.get("passages");
+        Object questionsObj = data.get("questions");
+        if (!(passagesObj instanceof List)) return;
+        List<String> passages = new ArrayList<>();
+        for (Object p : (List<?>) passagesObj) {
+            if (p != null) passages.add(p.toString());
+        }
+
+        List<Map<String, Object>> questions = null;
+        if (questionsObj instanceof List) {
+            questions = new ArrayList<>();
+            for (Object q : (List<?>) questionsObj) {
+                if (q instanceof Map) questions.add(new LinkedHashMap<>((Map<String, Object>) q));
+            }
+        }
+
+        // 1) If passage contains questions/instructions, split at the first question marker.
+        List<String> cleanedPassages = new ArrayList<>();
+        StringBuilder extractedInstruction = new StringBuilder();
+        for (String passage : passages) {
+            if (passage == null || passage.isBlank()) continue;
+
+            // Split if questions are coupled into the passage text
+            Matcher qm = QUESTION_START_MARKER.matcher(passage);
+            String onlyPassage = passage;
+            if (qm.find()) {
+                int cut = qm.start();
+                // Guard: marker near the beginning is usually a question-block header rather than a real split point.
+                // If we split too early, we may wipe the actual passage and lose multi-passage separation.
+                if (cut > 200 && cut < passage.length()) {
+                    onlyPassage = passage.substring(0, cut).trim();
+                    // the rest is likely question area (contains instructions); extract instruction-like lines
+                    String remainder = passage.substring(cut).trim();
+                    extractInstructionLines(remainder, extractedInstruction);
+                }
+            }
+
+            // Remove instruction lines that sometimes get stuck inside passage
+            String withoutInstructions = removeInstructionLines(onlyPassage, extractedInstruction);
+            if (!withoutInstructions.isBlank()) cleanedPassages.add(withoutInstructions);
+        }
+
+        // 2) If we have extracted instruction, prepend it to fill questions' text
+        String instructionBlock = extractedInstruction.toString().trim();
+        if (!instructionBlock.isBlank() && questions != null && !questions.isEmpty()) {
+            for (Map<String, Object> q : questions) {
+                String type = Objects.toString(q.getOrDefault("type", ""), "");
+                if (!"fill".equalsIgnoreCase(type)) continue;
+                String text = Objects.toString(q.getOrDefault("text", ""), "").trim();
+                if (text.isBlank()) continue;
+                // Avoid duplicating if already contains the instruction
+                if (!normalize(text).contains(normalize(instructionBlock))) {
+                    q.put("text", instructionBlock + "\n\n" + text);
+                }
+            }
+        }
+
+        // 3) Persist normalized data
+        data.put("passages", cleanedPassages);
+        if (questions != null) data.put("questions", questions);
+    }
+
+    private static void ensureSequentialQuestionNumbers(List<Map<String, Object>> questions) {
+        if (questions == null || questions.isEmpty()) return;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        boolean hasDupOrMissing = false;
+        for (Map<String, Object> q : questions) {
+            Object n = q.get("questionNumber");
+            if (!(n instanceof Number)) { hasDupOrMissing = true; continue; }
+            int v = ((Number) n).intValue();
+            if (v <= 0 || !seen.add(v)) { hasDupOrMissing = true; }
+        }
+        if (!hasDupOrMissing) return;
+        for (int i = 0; i < questions.size(); i++) {
+            questions.get(i).put("questionNumber", i + 1);
+        }
+    }
+
+    private static String ensureFillHasBlank(String questionText, String answer) {
+        if (questionText == null) return "";
+        String t = questionText.trim();
+        if (t.isBlank()) return t;
+
+        // already has blank markers
+        if (t.contains("________") || t.matches(".*_{3,}.*")) return t;
+
+        String a = answer == null ? "" : answer.trim();
+        if (a.isBlank()) return t;
+
+        // Replace first exact occurrence (case-insensitive) of answer with blank
+        Pattern p = Pattern.compile(Pattern.quote(a), Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(t);
+        if (m.find()) {
+            return m.replaceFirst("________");
+        }
+        return t;
+    }
+
+    private static String normalize(String s) {
+        return s == null ? "" : s.toLowerCase().replaceAll("\\s+", " ").trim();
+    }
+
+    private static void extractInstructionLines(String text, StringBuilder out) {
+        if (text == null || text.isBlank()) return;
+        for (String line : text.split("\\r?\\n")) {
+            String ln = line.trim();
+            if (ln.isBlank()) continue;
+            if (INSTRUCTION_LINE.matcher(ln).matches()) {
+                if (out.length() > 0) out.append("\n");
+                out.append(ln);
+            }
+        }
+    }
+
+    private static String removeInstructionLines(String passage, StringBuilder extractedInstruction) {
+        if (passage == null || passage.isBlank()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String line : passage.split("\\r?\\n")) {
+            String ln = line.trim();
+            if (ln.isBlank()) {
+                sb.append("\n");
+                continue;
+            }
+            if (INSTRUCTION_LINE.matcher(ln).matches()) {
+                if (extractedInstruction.length() > 0) extractedInstruction.append("\n");
+                extractedInstruction.append(ln);
+                continue;
+            }
+            sb.append(line).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    private static String enforceWordLimitFromQuestionText(String questionText, String answer) {
+        if (answer == null) return "";
+        String a = answer.trim();
+        if (a.isBlank()) return a;
+        String qt = questionText == null ? "" : questionText;
+
+        int limit = extractWordLimit(qt);
+        if (limit <= 0) return a;
+
+        // Keep only first N whitespace-separated tokens
+        String[] tokens = a.split("\\s+");
+        if (tokens.length <= limit) return a;
+        return String.join(" ", java.util.Arrays.copyOf(tokens, limit));
+    }
+
+    private static int extractWordLimit(String questionText) {
+        if (questionText == null) return -1;
+        Matcher m = ANSWER_WORD_LIMIT.matcher(questionText);
+        if (!m.find()) return -1;
+        String wordNum = m.group(1);
+        String digit = m.group(2);
+        if (digit != null) {
+            try { return Integer.parseInt(digit); } catch (NumberFormatException ignored) { return -1; }
+        }
+        if (wordNum != null) {
+            return WORD_NUM.getOrDefault(wordNum.toUpperCase(), -1);
+        }
+        return -1;
     }
 
     private void markError(Long examId) {

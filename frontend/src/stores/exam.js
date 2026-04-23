@@ -579,7 +579,17 @@ export const useExamStore = defineStore('exam', () => {
     let generatedWritingExamType = null
     try {
       const parsed = examData.parseResult ? JSON.parse(examData.parseResult) : {}
-      passage = parsed.passages ? parsed.passages.join('\n\n') : ''
+      if (Array.isArray(parsed.passages) && parsed.passages.length > 0) {
+        if (parsed.passages.length === 1) {
+          passage = parsed.passages[0] || ''
+        } else {
+          passage = parsed.passages
+            .map((p, i) => `【Passage ${i + 1}】\n${p || ''}`)
+            .join('\n\n')
+        }
+      } else {
+        passage = ''
+      }
       
       // Auto-generate writing task question if questions is empty but passage contains writing task
       if ((!questions || questions.length === 0) && passage) {

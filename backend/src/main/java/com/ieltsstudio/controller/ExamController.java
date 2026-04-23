@@ -2,6 +2,7 @@ package com.ieltsstudio.controller;
 
 import com.ieltsstudio.common.Result;
 import com.ieltsstudio.dto.SubmitAnswerRequest;
+import com.ieltsstudio.dto.TranslateRequest;
 import com.ieltsstudio.security.AuthUser;
 import com.ieltsstudio.service.AiParseService;
 import com.ieltsstudio.service.ExamService;
@@ -172,6 +173,20 @@ public class ExamController {
             return Result.success(result);
         } catch (Exception e) {
             return Result.error("评分失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /exams/translate — reading translate for selected text (requires auth)
+     * body: { passage: "...", selectedText: "..." }
+     */
+    @PostMapping("/translate")
+    public Result<?> translate(@Valid @RequestBody TranslateRequest req,
+                               @AuthenticationPrincipal AuthUser authUser) {
+        try {
+            return Result.success(aiParseService.translateWithContext(req.getPassage(), req.getSelectedText()));
+        } catch (Exception e) {
+            return Result.error("翻译失败: " + e.getMessage());
         }
     }
 }

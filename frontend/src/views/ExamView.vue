@@ -37,6 +37,23 @@
             <button class="ctrl-btn" @click="fontSize = Math.min(20, fontSize + 1)">A+</button>
           </div>
         </div>
+
+        <div
+          v-if="translateBubble.show"
+          class="translate-bubble"
+          :style="{ left: translateBubble.x + 'px', top: translateBubble.y + 'px' }"
+        >
+          <div class="tb-actions">
+            <button class="tb-btn" :disabled="translateBubble.loading" @click="doTranslate">
+              {{ translateBubble.loading ? '翻译中...' : '翻译' }}
+            </button>
+            <button class="tb-close" @click="hideTranslateBubble">×</button>
+          </div>
+          <div v-if="translateBubble.translation" class="tb-result">
+            <div class="tb-translation">{{ translateBubble.translation }}</div>
+            <div v-if="translateBubble.notes" class="tb-notes">{{ translateBubble.notes }}</div>
+          </div>
+        </div>
         <!-- Write task: structured layout -->
         <div v-if="isWriteSection" class="write-task-body" :style="{ fontSize: fontSize + 'px' }">
           <div v-if="writeVisual.hasVisual" class="write-visual-panel">
@@ -286,6 +303,16 @@
       </div>
     </div>
 
+    <!-- Translate FAB -->
+    <div class="translate-fab" :class="{ active: translateMode }">
+      <div class="fab-row">
+        <button class="fab-toggle tl-toggle" @click.stop="toggleTranslate" :title="translateMode ? '退出翻译模式' : '翻译'">
+          <span class="fab-icon">🌐</span>
+          <span class="fab-label">{{ translateMode ? '退出翻译' : '翻译' }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Word Collector FAB -->
     <div class="word-collector-fab" :class="{ active: collectMode }">
       <transition name="collector-expand">
@@ -361,6 +388,7 @@ import { useExamStore } from '@/stores/exam'
 import { useWordStore } from '@/stores/word'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
+import { translateApi } from '@/api/translate'
 
 const route = useRoute()
 const router = useRouter()
@@ -1151,7 +1179,12 @@ function scrollToQuestion(qId) {
 }
 
 function renderFill(text, qId) {
-  return text.replace('________', `<span class="fill-blank">[    ]</span>`)
+  const BLANK = `<span class="fill-blank">[    ]</span>`
+  const replaced = text.replace(/_{3,}/g, BLANK)
+  if (replaced === text) {
+    return `${text} ${BLANK}`.replace(/\n/g, '<br/>')
+  }
+  return replaced.replace(/\n/g, '<br/>')
 }
 
 function wordCount(text) {
@@ -1191,6 +1224,82 @@ const collectMode = ref(false)
 const collectedWords = ref(new Set())
 const examBodyRef = ref()
 const flushing = ref(false)
+
+// ── translate overlay ───────────────────────────────────
+const translateMode = ref(false)
+const translateBubble = ref({
+  show: false,
+  x: 0,
+  y: 0,
+  selectedText: '',
+  loading: false,
+  translation: '',
+  notes: '',
+})
+
+function hideTranslateBubble() {
+  translateBubble.value = { ...translateBubble.value, show: false, loading: false }
+}
+
+function onDocMouseDownForTranslate(ev) {
+  if (!translateBubble.value.show) return
+  const el = ev.target
+  if (el?.closest?.('.translate-bubble')) return
+  if (!passageRef.value?.contains(el)) hideTranslateBubble()
+}
+
+function onPassageMouseUp(e) {
+  if (!translateMode.value) return
+  if (highlightMode.value) return
+  if (collectMode.value) return
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return
+  const text = sel.toString().trim()
+  if (!text) return
+
+  // Only allow selection inside passage column
+  if (!passageRef.value?.contains(sel.anchorNode)) return
+
+  const range = sel.getRangeAt(0)
+  const rect = range.getBoundingClientRect()
+  const hostRect = passageRef.value.getBoundingClientRect()
+  const scrollTop = passageRef.value?.scrollTop || 0
+
+  // position relative to passage container (account for scroll)
+  const x = Math.min(Math.max(rect.left - hostRect.left, 8), hostRect.width - 120)
+  const y = Math.max(rect.bottom - hostRect.top + scrollTop + 6, 8)
+
+  translateBubble.value = {
+    ...translateBubble.value,
+    show: true,
+    x,
+    y,
+    selectedText: text,
+    loading: false,
+    translation: '',
+    notes: '',
+  }
+}
+
+async function doTranslate() {
+  const selText = translateBubble.value.selectedText
+  if (!selText) return
+  const passageText = currentSection.value?.passage || ''
+  translateBubble.value = { ...translateBubble.value, loading: true, translation: '', notes: '' }
+  try {
+    const res = await translateApi.translate(passageText, selText)
+    translateBubble.value = {
+      ...translateBubble.value,
+      loading: false,
+      translation: res?.translation || '',
+      notes: res?.notes || '',
+    }
+  } catch (e) {
+    console.error('[doTranslate] error:', e)
+    translateBubble.value = { ...translateBubble.value, loading: false }
+    ElMessage.error(e?.message || '翻译失败，请重试')
+  }
+}
 
 function captureWordAt(e) {
   // Prefer user selection (double-click selects a word)
@@ -1250,6 +1359,17 @@ function removeCollected(word) {
 function toggleCollect() {
   collectMode.value = !collectMode.value
   if (collectMode.value) {
+    // 互斥：关闭划重点和翻译
+    if (highlightMode.value) {
+      highlightMode.value = false
+      showColorPicker.value = false
+      examBodyRef.value?.removeEventListener('mouseup', onHighlightMouseUp)
+    }
+    if (translateMode.value) {
+      translateMode.value = false
+      passageRef.value?.removeEventListener('mouseup', onPassageMouseUp)
+      hideTranslateBubble()
+    }
     examBodyRef.value?.addEventListener('click', onCollectClick, true)
     ElMessage.info({ message: '选词模式已开启，点击文中任意单词加入生词本', duration: 2500 })
   } else {
@@ -1287,33 +1407,87 @@ const highlightColors = [
   { name: '橙色', value: 'rgba(251,146,60,0.40)' },
 ]
 
+function createHighlightSpan() {
+  const span = document.createElement('span')
+  span.className = 'text-highlight'
+  span.style.backgroundColor = highlightColor.value
+  span.title = '点击可移除高亮'
+  span.addEventListener('click', (ev) => {
+    ev.stopPropagation()
+    const parent = span.parentNode
+    if (!parent) return
+    while (span.firstChild) parent.insertBefore(span.firstChild, span)
+    parent.removeChild(span)
+  }, { once: true })
+  return span
+}
+
+function getTextNodesInRange(range) {
+  const results = []
+  const container = range.commonAncestorContainer
+  if (container.nodeType === Node.TEXT_NODE) {
+    results.push({ node: container, start: range.startOffset, end: range.endOffset })
+    return results
+  }
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode())) {
+    if (!range.intersectsNode(node)) continue
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : node.length
+    if (start < end) results.push({ node, start, end })
+  }
+  return results
+}
+
 function onHighlightMouseUp(e) {
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || !sel.rangeCount) return
   const selectedText = sel.toString().trim()
   if (!selectedText) return
-  // Ignore clicks on our own FAB buttons
   if (e.target.closest?.('.exam-fabs')) return
   try {
     const range = sel.getRangeAt(0)
-    const span = document.createElement('span')
-    span.className = 'text-highlight'
-    span.style.backgroundColor = highlightColor.value
-    span.title = '点击可移除高亮'
-    span.addEventListener('click', (ev) => {
-      ev.stopPropagation()
-      const parent = span.parentNode
-      if (!parent) return
-      while (span.firstChild) parent.insertBefore(span.firstChild, span)
-      parent.removeChild(span)
-    }, { once: true })
-    // extractContents + insertNode is more robust than surroundContents
-    const frag = range.extractContents()
-    span.appendChild(frag)
-    range.insertNode(span)
+    // Simple case: selection within one element
+    try {
+      const span = createHighlightSpan()
+      range.surroundContents(span)
+      sel.removeAllRanges()
+      return
+    } catch { /* crosses element boundary, fall through */ }
+    // Cross-element: wrap each text node individually
+    const textNodes = getTextNodesInRange(range)
+    for (const info of textNodes) {
+      const subRange = document.createRange()
+      subRange.setStart(info.node, info.start)
+      subRange.setEnd(info.node, info.end)
+      const span = createHighlightSpan()
+      subRange.surroundContents(span)
+    }
     sel.removeAllRanges()
   } catch {
     sel.removeAllRanges()
+  }
+}
+
+function toggleTranslate() {
+  translateMode.value = !translateMode.value
+  if (translateMode.value) {
+    // 互斥：关闭划重点和选词
+    if (highlightMode.value) {
+      highlightMode.value = false
+      showColorPicker.value = false
+      examBodyRef.value?.removeEventListener('mouseup', onHighlightMouseUp)
+    }
+    if (collectMode.value) {
+      collectMode.value = false
+      examBodyRef.value?.removeEventListener('click', onCollectClick, true)
+    }
+    passageRef.value?.addEventListener('mouseup', onPassageMouseUp)
+    ElMessage.info({ message: '翻译模式已开启：选中文章中的句子/短语后点击翻译', duration: 2500 })
+  } else {
+    passageRef.value?.removeEventListener('mouseup', onPassageMouseUp)
+    hideTranslateBubble()
   }
 }
 
@@ -1321,6 +1495,16 @@ function toggleHighlight() {
   highlightMode.value = !highlightMode.value
   showColorPicker.value = false
   if (highlightMode.value) {
+    // 互斥：关闭翻译和选词
+    if (translateMode.value) {
+      translateMode.value = false
+      passageRef.value?.removeEventListener('mouseup', onPassageMouseUp)
+      hideTranslateBubble()
+    }
+    if (collectMode.value) {
+      collectMode.value = false
+      examBodyRef.value?.removeEventListener('click', onCollectClick, true)
+    }
     examBodyRef.value?.addEventListener('mouseup', onHighlightMouseUp)
     ElMessage.info({ message: '划线模式已开启，选中文字即可高亮；点击高亮可移除', duration: 2500 })
   } else {
@@ -1347,6 +1531,9 @@ onMounted(() => {
   }, 1000)
   window.addEventListener('resize', resizeWriteCharts)
   nextTick(() => requestAnimationFrame(() => renderWriteCharts()))
+
+  // click outside to close translate bubble
+  document.addEventListener('mousedown', onDocMouseDownForTranslate)
 })
 
 onUnmounted(() => {
@@ -1359,6 +1546,10 @@ onUnmounted(() => {
   }
   window.removeEventListener('resize', resizeWriteCharts)
   disposeWriteCharts()
+
+  passageRef.value?.removeEventListener('mouseup', onPassageMouseUp)
+  document.removeEventListener('mousedown', onDocMouseDownForTranslate)
+  translateMode.value = false
 })
 </script>
 
@@ -1508,7 +1699,59 @@ onUnmounted(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
+
+.translate-bubble {
+  position: absolute;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 360px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12);
+  padding: 10px 12px;
+}
+
+.tb-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tb-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: #1D4ED8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tb-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tb-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  cursor: pointer;
+  color: #475569;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tb-result { margin-top: 10px; }
+.tb-translation { font-size: 13px; color: #0F172A; line-height: 1.55; font-weight: 600; }
+.tb-notes { margin-top: 6px; font-size: 12px; color: #64748B; line-height: 1.5; }
 
 .passage-header {
   display: flex;
@@ -2326,6 +2569,18 @@ onUnmounted(() => {
 }
 .color-swatch:hover { transform: scale(1.2); }
 .color-swatch.selected { border-color: #1B4332; transform: scale(1.15); }
+
+/* ── Translate FAB ─────────────────────────────────────── */
+.translate-fab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.tl-toggle { background: #1D4ED8 !important; }
+.tl-toggle:hover { background: #1E40AF !important; }
+.translate-fab.active .tl-toggle { background: #374151 !important; }
 
 /* ── Word Collector FAB ────────────────────────────────── */
 .word-collector-fab {

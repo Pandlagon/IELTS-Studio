@@ -17,7 +17,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/ielts_studio?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
-    password: your_password_here   # ⚠️ 生产环境替换为实际密码或环境变量
+    password: #your_password_here   # 生产环境替换为实际密码或环境变量
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20    # 最大连接数
@@ -65,7 +65,7 @@ jwt:
 # 申请地址：https://platform.deepseek.com
 ai:
   deepseek:
-    api-key:  your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
+    api-key:  #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
     base-url: https://api.deepseek.com
     model: deepseek-chat
     max-tokens: 8192
@@ -74,10 +74,13 @@ ai:
 # ─── AI 解析：通义千问 Qwen（精准解析）─────────────────────────────────────────
 # 用途：PDF 转图片后调用视觉模型解析，适合多栏/扫描版试卷
 # 申请地址：https://dashscope.aliyuncs.com（阿里云 DashScope）
+# 可用视觉模型（支持图片/PDF 识别）：
+#   - qwen3.6-plus           推荐，支持图片输入，有免费额度
+#   - 千问VL系列模型          支持图片输入，但没有免费额度
 qwen:
-  api-key:  your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
+  api-key:  #your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
   base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen-vl-plus
+  model: qwen3.6-plus
   ai-max-tokens: 8192
   max-pages: 20         # 单次精准解析最大页数
   render-dpi: 160       # PDF 渲染分辨率（DPI），越高越清晰但耗时更长

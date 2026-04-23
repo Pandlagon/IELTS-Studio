@@ -49,6 +49,9 @@ public class AiParseService {
             "passages"：字符串数组
               - READING：阅读文章文本（每篇可包含标题+正文）
               - 【重要】READING 的 passages 必须尽量逐字保留原文（英文就输出英文），不要翻译、不要改写、不要总结。
+              - 【重要】READING 的 passages【只能包含文章正文】。任何题目说明/题组指令（例如：
+                "Questions 1-6", "Complete the notes below", "Choose NO MORE THAN TWO WORDS from the passage for each answer",
+                "Write your answers in boxes ..."）都必须放在 questions 中（作为题干前缀或单独的题干说明），不要放进 passages。
               - 【重要】若文本中存在 "Answers"/"Answer Key"/"参考答案" 等答案区块：
                 * passages 中不要包含该答案区块
                 * questions 中的 answer 可以使用答案区块给出的答案，但不要把答案区块当作题干或正文
@@ -65,6 +68,7 @@ public class AiParseService {
                 字段：questionNumber, type, text, options {"A":…,"B":…,…}, answer（"A"/"B"/…）, explanation, locatorText
               type "fill"  → 填空 / 简答 / 句子完成 / 匹配 / 标题题
                 字段：questionNumber, type, text, answer（单词或短语）, explanation, locatorText
+                - 【重要】若题组指令包含字数限制（ONE WORD ONLY / NO MORE THAN TWO WORDS 等），answer 必须严格满足该限制。
 
               ── 写作题型 ───────────────────────────────────────────────
               type "write" → IELTS Writing Task 1 或 Task 2
@@ -92,6 +96,22 @@ public class AiParseService {
             Reading:  {"questionNumber":1,"type":"tfng","text":"…","answer":"TRUE","explanation":"…","locatorText":"…"}
             Writing:  {"questionNumber":1,"type":"write","text":"…","taskType":"Task2","answer":"…","explanation":"…","locatorText":"…","wordLimit":250}
             Listening:{"questionNumber":1,"type":"fill","text":"…","answer":"…","explanation":"…","locatorText":"…"}
+            """;
+
+    private static final String TRANSLATE_PROMPT = """
+            你是一个专业的雅思阅读中文翻译助手。
+            任务：根据【整篇文章上下文】对【用户选中的英文句子/短语】进行合理、自然、准确的中文翻译。
+
+            规则：
+            - 必须输出 JSON 对象。
+            - translation：给出自然、通顺的中文翻译（不要逐词硬翻）。
+            - notes：可选，若原文有指代、隐含含义、学术词汇，可给 1-2 条非常简短的解释；否则给空字符串。
+            - 只翻译 selectedText，不要把整篇 passage 全部翻译。
+            - 若 selectedText 不是完整句子，也要结合 passage 语境补全含义后翻译。
+
+            输入字段：
+            - passage: 整篇文章（英文）
+            - selectedText: 用户选中的文本（英文）
             """;
 
     public boolean isConfigured() {
@@ -424,5 +444,52 @@ public class AiParseService {
 
     public AiParseService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> translateWithContext(String passage, String selectedText) throws Exception {
+        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key未配置");
+        String p = passage == null ? "" : passage;
+        String s = selectedText == null ? "" : selectedText.trim();
+        if (s.isBlank()) throw new IllegalArgumentException("selectedText 不能为空");
+
+        // Keep passage bounded to avoid excessive tokens
+        String truncatedPassage = p.length() > 6000 ? p.substring(0, 6000) : p;
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", 512);
+        requestBody.put("response_format", Map.of("type", "json_object"));
+        requestBody.put("messages", List.of(
+                Map.of("role", "system", "content", TRANSLATE_PROMPT),
+                Map.of("role", "user", "content",
+                        "{" +
+                                "\"passage\":" + objectMapper.writeValueAsString(truncatedPassage) + "," +
+                                "\"selectedText\":" + objectMapper.writeValueAsString(s) +
+                                "}")
+        ));
+        String requestJson = objectMapper.writeValueAsString(requestBody);
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson, StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() >= 400) {
+            throw new RuntimeException("DeepSeek 翻译请求失败：HTTP " + response.statusCode() + " - " + response.body());
+        }
+
+        Map<String, Object> resp = objectMapper.readValue(response.body(), Map.class);
+        Object choicesObj = resp.get("choices");
+        if (!(choicesObj instanceof List) || ((List<?>) choicesObj).isEmpty()) {
+            throw new RuntimeException("DeepSeek 返回为空");
+        }
+        Map<String, Object> choice0 = (Map<String, Object>) ((List<?>) choicesObj).get(0);
+        Map<String, Object> message = (Map<String, Object>) choice0.get("message");
+        String content = message != null ? Objects.toString(message.get("content"), "") : "";
+        if (content.isBlank()) throw new RuntimeException("DeepSeek 翻译结果为空");
+        return objectMapper.readValue(content, Map.class);
     }
 }

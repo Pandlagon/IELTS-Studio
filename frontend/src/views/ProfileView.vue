@@ -33,6 +33,38 @@
           </div>
         </div>
 
+        <div class="profile-header card" style="margin-top: 14px">
+          <div class="avatar-section" style="align-items:center">
+            <div class="user-info">
+              <h3 class="username" style="margin:0">学习打卡</h3>
+              <p class="user-email" style="margin-top:6px">
+                累计 {{ checkinStats.totalDays }} 天，连续 {{ checkinStats.currentStreak }} 天
+              </p>
+              <div class="checkin-calendar" v-if="calendarDays.length">
+                <div class="cc-grid">
+                  <div
+                    v-for="d in calendarDays"
+                    :key="d.date"
+                    class="cc-cell"
+                    :class="{ on: d.checked, today: d.isToday }"
+                    :title="d.date"
+                  >
+                    {{ d.day }}
+                  </div>
+                </div>
+                <div class="cc-legend">
+                  <span class="cc-tag">最近 30 天</span>
+                  <span class="cc-dot on"></span><span class="cc-text">已打卡</span>
+                  <span class="cc-dot"></span><span class="cc-text">未打卡</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button class="edit-btn btn-secondary" :disabled="checkinStats.checkedInToday || checkinLoading" @click="doCheckin">
+            {{ checkinStats.checkedInToday ? '今日已打卡' : (checkinLoading ? '打卡中...' : '立即打卡') }}
+          </button>
+        </div>
+
         <div class="profile-body">
           <!-- Left: Exam History -->
           <div class="history-section">
@@ -171,6 +203,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWordStore } from '@/stores/word'
 import { useExamStore } from '@/stores/exam'
 import { authApi } from '@/api/auth'
+import { checkinApi } from '@/api/checkin'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -181,13 +214,69 @@ const showEdit = ref(false)
 const editForm = ref({ username: authStore.username, targetBand: 7.0 })
 const loadingHistory = ref(false)
 
+const checkinStats = ref({ checkedInToday: false, totalDays: 0, currentStreak: 0 })
+const checkinLoading = ref(false)
+const recentDates = ref([])
+
+const calendarDays = computed(() => {
+  const days = 30
+  const out = []
+  const today = new Date()
+  const tzToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const checkedSet = new Set(recentDates.value || [])
+  for (let i = days - 1; i >= 0; i--) {
+    const dt = new Date(tzToday)
+    dt.setDate(dt.getDate() - i)
+    const yyyy = dt.getFullYear()
+    const mm = String(dt.getMonth() + 1).padStart(2, '0')
+    const dd = String(dt.getDate()).padStart(2, '0')
+    const iso = `${yyyy}-${mm}-${dd}`
+    out.push({
+      date: iso,
+      day: dt.getDate(),
+      checked: checkedSet.has(iso),
+      isToday: iso === `${tzToday.getFullYear()}-${String(tzToday.getMonth() + 1).padStart(2, '0')}-${String(tzToday.getDate()).padStart(2, '0')}`,
+    })
+  }
+  return out
+})
+
 const examHistory = computed(() => examStore.examHistory)
 
 onMounted(async () => {
   loadingHistory.value = true
   await examStore.loadHistory()
   loadingHistory.value = false
+
+  try {
+    const data = await checkinApi.getStats()
+    if (data) checkinStats.value = data
+  } catch { /* ignore */ }
+
+  try {
+    const recent = await checkinApi.getRecent(30)
+    if (Array.isArray(recent)) recentDates.value = recent
+  } catch { /* ignore */ }
 })
+
+async function doCheckin() {
+  if (checkinStats.value.checkedInToday) return
+  checkinLoading.value = true
+  try {
+    const data = await checkinApi.checkinToday()
+    if (data) {
+      checkinStats.value = data
+      ElMessage.success('打卡成功')
+    }
+
+    const recent = await checkinApi.getRecent(30)
+    if (Array.isArray(recent)) recentDates.value = recent
+  } catch {
+    ElMessage.error('打卡失败，请重试')
+  } finally {
+    checkinLoading.value = false
+  }
+}
 
 async function openRecord(record) {
   if (!record.recordId) return
@@ -299,6 +388,32 @@ async function saveEdit() {
 .username { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
 .user-email { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
 .user-badges { display: flex; gap: 8px; }
+
+.checkin-calendar { margin-top: 10px; }
+.cc-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.cc-cell {
+  height: 26px;
+  border-radius: 7px;
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+.cc-cell.on { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35); color: #166534; font-weight: 600; }
+.cc-cell.today { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) inset; }
+.cc-legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-muted); font-size: 12px; }
+.cc-tag { padding: 2px 8px; border-radius: 999px; background: #F8FAFC; border: 1px solid rgba(148, 163, 184, 0.35); color: #475569; }
+.cc-dot { width: 10px; height: 10px; border-radius: 3px; background: #F1F5F9; border: 1px solid rgba(148, 163, 184, 0.35); display: inline-block; }
+.cc-dot.on { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35); }
+.cc-text { margin-right: 6px; }
 
 /* Stats Row */
 .stats-row {

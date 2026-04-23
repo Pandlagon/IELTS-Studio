@@ -147,3 +147,14 @@ CREATE TABLE IF NOT EXISTS word_progress (
     UNIQUE KEY uk_user_word (user_id, word_id),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Study Check-ins
+CREATE TABLE IF NOT EXISTS study_checkins (
+    id           BIGINT   NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id      BIGINT   NOT NULL,
+    checkin_date DATE     NOT NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_date (user_id, checkin_date),
+    INDEX idx_sc_user_id (user_id),
+    INDEX idx_sc_date (checkin_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

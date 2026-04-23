@@ -1,17 +1,28 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import { createWorker } from 'tesseract.js'
+// pdfjs-dist and tesseract.js are loaded lazily to avoid 13MB+ upfront cost
+let pdfjsLib = null
 
-// Point the worker at the bundled worker file shipped with pdfjs-dist
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString()
+async function loadPdfjs() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+      import.meta.url,
+    ).toString()
+  }
+  return pdfjsLib
+}
+
+async function loadTesseract() {
+  const { createWorker } = await import('tesseract.js')
+  return createWorker
+}
 
 const MIN_TEXT_LENGTH = 80  // chars below this → treat as scanned PDF
 const OCR_SCALE = 2.0       // render scale for OCR (higher = better accuracy, slower)
 const MAX_OCR_PAGES = 20    // cap to avoid browser OOM
 
 async function ocrImages(files, onProgress) {
+  const createWorker = await loadTesseract()
   const worker = await createWorker('eng')
   const parts = []
   const total = Math.min(files.length, MAX_OCR_PAGES)
@@ -46,6 +57,7 @@ async function renderPageToCanvas(page, scale) {
  * @param {function} onProgress  optional callback(pageIndex, totalPages)
  */
 async function ocrPdf(pdf, onProgress) {
+  const createWorker = await loadTesseract()
   const worker = await createWorker('eng')
   const parts = []
   const total = Math.min(pdf.numPages, MAX_OCR_PAGES)
@@ -74,8 +86,9 @@ async function ocrPdf(pdf, onProgress) {
  */
 export async function extractTextFromPdf(file, onProgress) {
   try {
+    const pdfjs = await loadPdfjs()
     const arrayBuffer = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
 
     // Step 1: direct text layer extraction (instant for text-based PDFs)
     const parts = []

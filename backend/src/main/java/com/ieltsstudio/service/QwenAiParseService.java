@@ -90,10 +90,21 @@ public class QwenAiParseService {
             字段：questionNumber, type, text, answer（“TRUE”/“FALSE”/“NOT GIVEN”
                   或“YES”/“NO”/“NOT GIVEN”）, explanation, locatorText
           类型 "mcq"   → 单选题（带字母选项）
-            字段：questionNumber, type, text, options {"A":…,"B":…,…}, answer（“A”/“B”/…）,
+            字段：questionNumber, type, text, options（JSON对象 {"A":"完整选项文字","B":"完整选项文字",…}）, answer（"A"/"B"/…）,
                   explanation, locatorText
-          类型 "fill"  → 填空/简答/句子完成/匹配/标题题
+            - 【重要】options 必须是 JSON 对象（不是数组），每个值必须是选项的完整描述文字，不能只写字母标识。
+            - 【重要】如果一组题目共享同一个选项列表（如 Questions 9-13 从 A-P 选项中选择），每道题的 options 都必须包含完整选项列表。
+          类型 "fill"  → 填空/简答/句子完成/标题题
             字段：questionNumber, type, text, answer（单词或短语）, explanation, locatorText
+
+        【重要】题型判定规则：
+        - 如果题目要求从一个选项列表（如 A-P、A-H 等）中选择答案，必须标记为 "mcq"，并在 options 中列出所有可选项。
+        - options 必须是 JSON 对象格式，每个选项值必须是完整的选项描述文字（不能只写字母标识）。
+          例如：{"A":"Rainforests are in danger.","B":"Climate change is the main threat.","C":"..."}
+        - 如果一组题目共享同一个选项列表（如 Questions 9-13 从 A-P 中选），每道题的 options 都必须包含完整选项列表。
+        - 只有答案是从文章中提取的单词或短语时才使用 "fill"。
+        - 选项列表可能出现在一组题目的前面或后面，需要关联到对应的题目。
+        - 匹配题（matching）也属于 "mcq"，需要将匹配列表作为 options 提供。
 
         规则：
         - 【极其重要】对于阅读部分：所有问题都放入 questions 数组，passages 数组中【绝对不能包含任何题目】。
@@ -110,7 +121,7 @@ public class QwenAiParseService {
         ── PASSAGES ────────────────────────────────────────────────────────────
         “passages”：字符串数组，每个写作任务（Task 1、Task 2）一个条目。
 
-        对于 TASK 2（议论文）：只包含完整的题目提示文字，不需要特殊区块。
+        对于 TASK 2（议论文）：必须逐字包含所有考试指令文字，例如 "WRITING TASK 2"、"You should spend about 40 minutes on this task."、"Write about the following topic:"、"Write at least 250 words." 等。不要省略任何原文中的文字。不需要特殊区块。
 
         对于 TASK 1（描述图表）：passage 字符串必须【按顺序】包含以下区块，区块外不得有任何额外文字：
 
@@ -247,6 +258,11 @@ public class QwenAiParseService {
               类型 "mcq"   → {questionNumber, type, text, options{"A":...}, answer, explanation, locatorText}
               类型 "fill"  → {questionNumber, type, text, answer, explanation, locatorText}
 
+            【重要】题型判定规则：
+            - 如果题目要求从一个选项列表（如 A-P、A-H 等）中选择答案，必须标记为 "mcq"，并在 options 中列出所有可选项。
+            - 只有答案是从文章中提取的单词或短语时才使用 "fill"。
+            - 匹配题（matching）和列表选择题也属于 "mcq"。
+
             规则：
             - 对于阅读部分：所有问题都放入 questions 数组，passages 数组中【不包含任何问题】。
             - 在每个部分内保留原始问题编号。
@@ -260,8 +276,8 @@ public class QwenAiParseService {
             你是一个具备视觉能力的雅思写作试卷解析器，支持多页试卷。
 
             对于每个部分，完整解析如下：
-            “passages”：字符串数组
-              - 题目刺激文本（Task Prompt）。如果存在图表/图形/表格，你必须包含 chartType 和所有数据。
+            "passages"：字符串数组
+              - 写作任务的【完整原文】（每个任务一个条目），必须逐字包含所有考试指令，例如 "WRITING TASK 2"、"You should spend about 40 minutes on this task."、"Write about the following topic:"、"Write at least 250 words." 等。不要省略任何原文中的文字。如果存在图表/图形/表格，你必须包含 chartType 和所有数据。
 
             写作任务 1（带图表）的重要规则：
             - 始终在 passage 开头包含 chartType。

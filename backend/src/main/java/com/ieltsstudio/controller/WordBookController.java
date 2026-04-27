@@ -2,6 +2,7 @@ package com.ieltsstudio.controller;
 
 import com.ieltsstudio.common.Result;
 import com.ieltsstudio.security.AuthUser;
+import com.ieltsstudio.service.ClozeService;
 import com.ieltsstudio.service.WordBookService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,6 +34,7 @@ public class WordBookController {
 
     private final WordBookService wordBookService;
     private final AsyncWordService asyncWordService;
+    private final ClozeService clozeService;
 
     // ─── 词书管理 ──────────────────────────────────────────────────────────────
 
@@ -170,5 +172,51 @@ public class WordBookController {
         var defaultBook = wordBookService.ensureDefaultBook(authUser.getId());
         asyncWordService.quickAddWords(authUser.getId(), defaultBook.getId(), words);
         return Result.success(Map.of("status", "processing", "count", words.size()));
+    }
+
+    // ─── 完形填空练习 ─────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /words/cloze/generate — AI 生成完形填空
+     * <p>请求体：{@code { "words": ["apple","banana",...], "meanings": ["苹果","香蕉",...], "difficulty": "medium" }}
+     * <p>数据不落库，一次性返回。
+     */
+    @SuppressWarnings("unchecked")
+    @PostMapping("/cloze/generate")
+    public Result<?> generateCloze(@RequestBody Map<String, Object> body,
+                                   @AuthenticationPrincipal AuthUser authUser) {
+        List<String> words = (List<String>) body.get("words");
+        List<String> meanings = (List<String>) body.get("meanings");
+        String difficulty = (String) body.getOrDefault("difficulty", "medium");
+        if (words == null || words.isEmpty()) return Result.error("请至少选择 1 个单词");
+        if (words.size() > 10) return Result.error("最多选择 10 个单词");
+        try {
+            Map<String, Object> result = clozeService.generate(words, meanings, difficulty);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("生成完形填空失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /words/cloze/check — AI 批改完形填空
+     * <p>请求体：{@code { "passage": "...", "blanks": [...], "userAnswers": {"1":"A","2":"C"} }}
+     */
+    @SuppressWarnings("unchecked")
+    @PostMapping("/cloze/check")
+    public Result<?> checkCloze(@RequestBody Map<String, Object> body,
+                                @AuthenticationPrincipal AuthUser authUser) {
+        String passage = (String) body.get("passage");
+        List<Map<String, Object>> blanks = (List<Map<String, Object>>) body.get("blanks");
+        Map<String, String> userAnswers = (Map<String, String>) body.get("userAnswers");
+        if (passage == null || blanks == null || userAnswers == null) {
+            return Result.error("缺少必要参数");
+        }
+        try {
+            Map<String, Object> result = clozeService.check(passage, blanks, userAnswers);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("批改失败：" + e.getMessage());
+        }
     }
 }

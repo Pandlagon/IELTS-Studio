@@ -11,6 +11,10 @@
             <p class="page-sub">{{ wordStore.currentBook?.name || '雅思核心词汇' }}</p>
           </div>
           <div class="header-right">
+            <button class="btn-secondary btn-sm" @click="goToCloze">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              完形填空
+            </button>
             <button v-if="!wordStore.currentBook?.isBuiltin" class="btn-secondary btn-sm" @click="showUpload = true">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               添加单词
@@ -391,11 +395,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import NavBar from '@/components/NavBar.vue'
 import WordCard from '@/components/WordCard.vue'
 import { useWordStore } from '@/stores/word'
 
+const router = useRouter()
 const wordStore = useWordStore()
 const searchWord = ref('')
 const filterStatus = ref('all')
@@ -409,6 +415,10 @@ const creatingBook = ref(false)
 const createBookForm = ref({ name: '', desc: '' })
 const uploadFile = ref(null)
 const fileInputRef = ref()
+
+function goToCloze() {
+  router.push({ path: '/cloze', query: { bookId: wordStore.currentBookId } })
+}
 
 const modes = [
   { value: 'card', label: '卡片', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>' },

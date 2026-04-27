@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS exams (
     question_count INT          NOT NULL DEFAULT 0,
     duration       INT          NOT NULL DEFAULT 60,
     difficulty     VARCHAR(20)  DEFAULT '中等',
+    tags           VARCHAR(500) DEFAULT NULL COMMENT 'JSON array of tags, e.g. ["Academic","Writing","Task 2"]',
     file_key       VARCHAR(500),
     parse_result   LONGTEXT,
     deleted        TINYINT(1)   NOT NULL DEFAULT 0,
@@ -78,6 +79,9 @@ CREATE TABLE IF NOT EXISTS exam_records (
     INDEX idx_user_id (user_id),
     INDEX idx_exam_id (exam_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration: run this if exams already exists without tags column
+-- ALTER TABLE exams ADD COLUMN tags VARCHAR(500) DEFAULT NULL COMMENT 'JSON array of tags' AFTER difficulty;
 
 -- Migration: run this if exam_records already exists without ai_feedback_json
 -- ALTER TABLE exam_records ADD COLUMN ai_feedback_json LONGTEXT AFTER answers_json;
@@ -146,6 +150,31 @@ CREATE TABLE IF NOT EXISTS word_progress (
     updated_at DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_word (user_id, word_id),
     INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Exam Collections (试卷集)
+CREATE TABLE IF NOT EXISTS exam_collections (
+    id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    title       VARCHAR(255) NOT NULL,
+    description VARCHAR(500),
+    duration    INT          NOT NULL DEFAULT 0,
+    deleted     TINYINT(1)   NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ec_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Exam Collection Items (试卷集内的试卷)
+CREATE TABLE IF NOT EXISTS exam_collection_items (
+    id            BIGINT   NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    collection_id BIGINT   NOT NULL,
+    exam_id       BIGINT   NOT NULL,
+    sort_order    INT      NOT NULL DEFAULT 0,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_collection_exam (collection_id, exam_id),
+    INDEX idx_eci_collection (collection_id),
+    INDEX idx_eci_exam (exam_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Study Check-ins

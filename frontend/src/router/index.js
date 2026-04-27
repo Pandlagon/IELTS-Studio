@@ -33,6 +33,12 @@ const routes = [
     component: () => import('@/views/WordsView.vue'),
   },
   {
+    path: '/cloze',
+    name: 'Cloze',
+    component: () => import('@/views/ClozeView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/exams',
     name: 'Exams',
     component: () => import('@/views/ExamsView.vue'),
@@ -47,6 +53,12 @@ const routes = [
     path: '/exam/:id/result',
     name: 'Result',
     component: () => import('@/views/ResultView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/collection/:id',
+    name: 'CollectionExam',
+    component: () => import('@/views/CollectionExamView.vue'),
     meta: { requiresAuth: true },
   },
   {

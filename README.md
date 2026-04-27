@@ -2,7 +2,7 @@
 
 > **IELTS Studio** 是一款专为英语考生打造的**全流程机考模拟平台**。它能够将你手中的 PDF 或 Word 格式试卷，通过 AI 技术一键转化为可交互的网页机考界面，并提供智能写作批改与单词管理功能，助你提前适应机考节奏，高效备考。
 >
-> **🌐 在线访问：** [http://110.40.155.110:8888](http://110.40.155.110:8888)
+> **🌐 在线访问：** [http://www.lainpeter.top:8888](http://www.lainpeter.top:8888)
 >
 > *(网站还在持续更新中，更多功能敬请期待下一次更新)*
 
@@ -20,7 +20,8 @@
 ![写作评分](docs/images/preview-writing.png)
 ### 单词管理（AI 智能释义）
 ![单词管理](docs/images/preview-words.png)
-
+### 自选完形填空
+![完形填空](docs/images/preview-blanks.png)
 ---
 
 ## 目录

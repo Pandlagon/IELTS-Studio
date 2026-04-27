@@ -154,13 +154,16 @@
             <!-- MCQ -->
             <template v-else-if="question.type === 'mcq'">
               <p class="q-text">{{ question.text }}</p>
-              <div class="mcq-options">
+              <div class="mcq-collapse-toggle" @click="toggleMcqCollapse(question.id)">
+                <span>{{ collapsedMcq.has(question.id) ? '▶ 展开选项' : '▼ 收起选项' }}</span>
+              </div>
+              <div class="mcq-options" v-show="!collapsedMcq.has(question.id) || examStore.getAnswer(question.id)">
                 <button
-                  v-for="opt in question.options"
+                  v-for="opt in visibleOptions(question)"
                   :key="opt.label"
                   class="mcq-btn"
                   :class="{ selected: examStore.getAnswer(question.id) === opt.label }"
-                  @click="setAnswer(question.id, opt.label)"
+                  @click="collapsedMcq.has(question.id) ? toggleMcqCollapse(question.id) : setAnswer(question.id, opt.label)"
                 >
                   <span class="opt-label">{{ opt.label }}</span>
                   <span class="opt-text">{{ opt.text }}</span>
@@ -991,6 +994,20 @@ const tfngOptions = [
   { value: 'FALSE', label: 'FALSE' },
   { value: 'NOT GIVEN', label: 'NOT GIVEN' },
 ]
+
+// MCQ collapse state: collapsed questions only show selected option (or none)
+const collapsedMcq = ref(new Set())
+function toggleMcqCollapse(qId) {
+  const s = new Set(collapsedMcq.value)
+  if (s.has(qId)) s.delete(qId); else s.add(qId)
+  collapsedMcq.value = s
+}
+function visibleOptions(question) {
+  if (!collapsedMcq.value.has(question.id)) return question.options
+  const ans = examStore.getAnswer(question.id)
+  if (!ans) return []
+  return question.options.filter(o => o.label === ans)
+}
 
 const progressPct = computed(() => {
   if (!examStore.totalQuestions) return 0
@@ -1982,6 +1999,20 @@ onUnmounted(() => {
   background: var(--color-primary);
   color: white;
 }
+
+/* MCQ collapse toggle */
+.mcq-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  margin-bottom: 6px;
+  user-select: none;
+  transition: color 0.15s;
+}
+.mcq-collapse-toggle:hover { color: var(--color-primary); }
 
 /* MCQ */
 .mcq-options {

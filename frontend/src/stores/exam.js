@@ -41,6 +41,21 @@ const WRITING_SIGNALS = [
   ...TASK2_KEYWORDS,
 ]
 
+/**
+ * Parse options from a multi-line string format: "A: text\nB: text\n..."
+ * or "A  text\nB  text\n..." (used when AI returns options as plain text).
+ */
+function parseOptionsString(str) {
+  if (typeof str !== 'string') return null
+  const lines = str.split('\n').filter(l => l.trim())
+  const opts = []
+  for (const line of lines) {
+    const m = line.trim().match(/^([A-Z])[:：]\s*(.+)$/) || line.trim().match(/^([A-Z])\s{2,}(.+)$/)
+    if (m) opts.push({ label: m[1], text: m[2].trim() })
+  }
+  return opts.length >= 2 ? opts : null
+}
+
 function normalizeText(text) {
   return (text || '').toString().toLowerCase().replace(/\s+/g, ' ').trim()
 }
@@ -619,10 +634,23 @@ export const useExamStore = defineStore('exam', () => {
         if (q.options) {
           try {
             const raw = typeof q.options === 'string' ? JSON.parse(q.options) : q.options
-            options = Array.isArray(raw)
-              ? raw
-              : Object.entries(raw).map(([label, text]) => ({ label, text: String(text) }))
-          } catch { options = undefined }
+            if (typeof raw === 'string') {
+              // AI returned options as a plain text string "A: text\nB: text\n..."
+              options = parseOptionsString(raw)
+            } else if (Array.isArray(raw)) {
+              // Array of {label, text} objects → use as-is; array of strings → convert
+              options = raw.map(item => {
+                if (typeof item === 'object' && item !== null && item.label) return item
+                if (typeof item === 'string') return { label: item, text: item }
+                return { label: String(item), text: String(item) }
+              })
+            } else if (raw && typeof raw === 'object') {
+              options = Object.entries(raw).map(([label, text]) => ({ label, text: String(text) }))
+            }
+          } catch {
+            // Fallback: try parsing "A: text\nB: text" format
+            options = parseOptionsString(q.options)
+          }
         }
         let taskType, wordLimit
         let type = q.type || 'fill'
@@ -692,6 +720,17 @@ export const useExamStore = defineStore('exam', () => {
     if (idx !== -1) exams.value[idx] = { ...exams.value[idx], status: 'error' }
   }
 
+  function parseTags(tagsJson, type) {
+    if (tagsJson) {
+      try {
+        const parsed = typeof tagsJson === 'string' ? JSON.parse(tagsJson) : tagsJson
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      } catch { /* fall through */ }
+    }
+    // Fallback: generate from type
+    return [{ reading: 'Reading', listening: 'Listening', writing: 'Writing' }[type] || type]
+  }
+
   async function loadExams() {
     const token = localStorage.getItem('ielts_token') || ''
     if (!token || token.startsWith('mock_token_')) return
@@ -709,7 +748,7 @@ export const useExamStore = defineStore('exam', () => {
         duration: e.duration || 60,
         difficulty: e.difficulty || '中等',
         createdAt: e.createdAt ? e.createdAt.substring(0, 10) : new Date().toISOString().split('T')[0],
-        tags: [{ reading: '阅读', listening: '听力', writing: '写作' }[e.type] || e.type],
+        tags: parseTags(e.tags, e.type),
         sections: [],
       }))
       // Merge: real DB exams first, then mock exams (always keep as starter content)
@@ -741,8 +780,7 @@ export const useExamStore = defineStore('exam', () => {
       const res = await request.get('/exams/history')
       const records = res.data || []
       if (records.length > 0) {
-        // Backend has real records — use them as source of truth
-        examHistory.value = records.map(r => ({
+        let mapped = records.map(r => ({
           recordId: r.id,
           examId: r.examId,
           examTitle: r.examTitle || '模拟考试',
@@ -753,6 +791,23 @@ export const useExamStore = defineStore('exam', () => {
           timeUsed: r.timeUsed,
           submittedAt: r.submittedAt,
         }))
+
+        // Merge collection entries: replace individual child records with consolidated collection entries
+        try {
+          const savedHistory = JSON.parse(localStorage.getItem('ielts_exam_history') || '[]')
+          const collectionEntries = savedHistory.filter(h => h.isCollection)
+          if (collectionEntries.length > 0) {
+            const childIds = new Set()
+            collectionEntries.forEach(ce => {
+              (ce.childRecordIds || []).forEach(id => childIds.add(id))
+            })
+            mapped = mapped.filter(r => !childIds.has(r.recordId))
+            mapped = [...collectionEntries, ...mapped]
+            mapped.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+          }
+        } catch { /* ignore */ }
+
+        examHistory.value = mapped
         localStorage.setItem('ielts_exam_history', JSON.stringify(examHistory.value))
       }
       // If backend returns empty, keep existing localStorage history as fallback
@@ -789,6 +844,23 @@ export const useExamStore = defineStore('exam', () => {
         }
         return mapped
       })
+
+      // Fetch exam passage data for display in ResultView
+      let passages = []
+      if (d.examId) {
+        try {
+          const examRes = await request.get(`/exams/${d.examId}`)
+          const parsed = examRes.data.parseResult ? JSON.parse(examRes.data.parseResult) : {}
+          if (Array.isArray(parsed.passages) && parsed.passages.length > 0) {
+            passages = [{
+              examId: d.examId,
+              title: examRes.data.title || d.examTitle || '',
+              passage: parsed.passages.join('\n\n'),
+            }]
+          }
+        } catch { /* passage won't be available */ }
+      }
+
       examResult.value = {
         recordId: d.recordId,
         examId: d.examId,
@@ -800,14 +872,26 @@ export const useExamStore = defineStore('exam', () => {
         timeUsed: d.timeUsed,
         submittedAt: d.submittedAt,
         score: Math.round((d.correct / (d.total || 1)) * 40),
+        passages,
       }
       return true
     } catch { return false }
   }
 
+  async function loadCollectionResult(collectionId) {
+    try {
+      const saved = localStorage.getItem(`ielts_collection_result_${collectionId}`)
+      if (saved) {
+        examResult.value = JSON.parse(saved)
+        return true
+      }
+    } catch { /* ignore */ }
+    return false
+  }
+
   return { exams, currentExam, currentAnswers, examResult, isSubmitting, examHistory, deleteExam, currentExamQuestions, answeredCount, totalQuestions,
     loadExam, setAnswer, getAnswer, submitExam, addExam, getExamHistory,
-    loadHistory, loadRecord, loadExams,
+    loadHistory, loadRecord, loadCollectionResult, loadExams,
     addPendingExam, updateParsedExam, markExamError,
   }
 })

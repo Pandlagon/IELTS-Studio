@@ -85,10 +85,15 @@ public class ExamController {
             @RequestParam(value = "duration", defaultValue = "60") Integer duration,
             @RequestParam(value = "parsePrecise", defaultValue = "false") Boolean parsePrecise,
             @RequestParam(value = "extractedText", required = false) String extractedText,
+            @RequestParam(value = "description", required = false) String description,
             @AuthenticationPrincipal AuthUser authUser) throws Exception {
         var exam = (files != null && files.length > 0)
                 ? examService.uploadExamImages(authUser.getId(), files, title, type, duration, parsePrecise, extractedText)
                 : examService.uploadExam(authUser.getId(), file, title, type, duration, parsePrecise, extractedText);
+        if (description != null && !description.isBlank()) {
+            exam.setDescription(description);
+            examService.updateExam(exam);
+        }
         return Result.success(exam);
     }
 

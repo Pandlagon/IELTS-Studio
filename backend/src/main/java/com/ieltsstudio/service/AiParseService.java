@@ -35,6 +35,9 @@ public class AiParseService {
 
     private final ObjectMapper objectMapper;
 
+    private static final java.util.regex.Pattern OPTION_LINE_PATTERN =
+            java.util.regex.Pattern.compile("^([A-P])\\s{2,}(.+)$");
+
     private static final String SYSTEM_PROMPT = """
             你是一个雅思（IELTS）试卷内容解析器。给定从任意雅思试卷（阅读 / 写作 / 听力）中提取出的原始文本，
             请解析并返回一个结构化的 JSON 对象。
@@ -65,7 +68,9 @@ public class AiParseService {
                 字段：questionNumber, type, text, answer（"TRUE"/"FALSE"/"NOT GIVEN" 或
                       "YES"/"NO"/"NOT GIVEN"）, explanation, locatorText
               type "mcq"   → 选择题（A/B/C/D 等选项）
-                字段：questionNumber, type, text, options {"A":…,"B":…,…}, answer（"A"/"B"/…）, explanation, locatorText
+                字段：questionNumber, type, text, options（JSON对象 {"A":"完整选项文字","B":"完整选项文字",…}）, answer（"A"/"B"/…）, explanation, locatorText
+                - 【重要】options 必须是 JSON 对象（不是数组），每个值必须是选项的完整描述文字，不能只写字母标识。
+                - 【重要】如果一组题目共享同一个选项列表（如 Questions 9-13 从 A-P 选项中选择），每道题的 options 都必须包含完整选项列表，每个选项值写出描述全文。
               type "fill"  → 填空 / 简答 / 句子完成 / 匹配 / 标题题
                 字段：questionNumber, type, text, answer（单词或短语）, explanation, locatorText
                 - 【重要】若题组指令包含字数限制（ONE WORD ONLY / NO MORE THAN TWO WORDS 等），answer 必须严格满足该限制。
@@ -90,6 +95,8 @@ public class AiParseService {
               - answer：若文本中包含答案则直接复制；否则从文章/题目推导。
               - locatorText：从文章或题目中截取 3-8 个词的“原文短语”，不可为空。
               - 如果输入明显包含阅读正文（如存在标题+段落），passages 不应为空。
+              - 【重要】输入文本可能来自 OCR，包含乱码或噪声字符（如 "CHEER EF-d"、"NSREEHLET" 等）。请忽略这些噪声，尽力从中识别出有效的文章段落和题目。
+              - 【重要】questions 数组绝不能为空。即使文本有噪声，只要能识别出"Questions"、"TRUE/FALSE/NOT GIVEN"、选项列表（A-P）等题目标记，就必须提取并输出所有题目。
               - 只返回 JSON 对象本体，不要输出 markdown 代码块，不要输出任何额外说明。
 
             输出示例结构：
@@ -210,6 +217,7 @@ public class AiParseService {
         log.debug("DeepSeek response content length={}", content.length());
 
         Map<String, Object> parsed = objectMapper.readValue(content, Map.class);
+        fixLetterOnlyMcqOptions(parsed, input);
         return parsed;
     }
 
@@ -228,19 +236,29 @@ public class AiParseService {
 
             "passages"：字符串数组
               - READING：阅读文章文本（每篇可包含标题+正文）
-              - WRITING：写作任务题干文本（每个任务一个条目）
+              - WRITING：写作任务的【完整原文】（每个任务一个条目），必须逐字包含所有考试指令，例如 "WRITING TASK 2"、"You should spend about 40 minutes on this task."、"Write about the following topic:"、"Write at least 250 words." 等。不要省略任何原文中的文字。
               - LISTENING：听力 transcript；若没有则为空数组
 
             "questions"：问题对象数组，必须使用以下固定结构之一：
               type "tfng"  → {questionNumber, type, text, answer("TRUE"/"FALSE"/"NOT GIVEN"), explanation, locatorText}
-              type "mcq"   → {questionNumber, type, text, options{"A":…}, answer("A"/"B"/…), explanation, locatorText}
+              type "mcq"   → {questionNumber, type, text, options{"A":"完整选项文字","B":"完整选项文字",...}, answer("A"/"B"/…), explanation, locatorText}
               type "fill"  → {questionNumber, type, text, answer(单词或短语), explanation, locatorText}
               type "write" → {questionNumber, type, text, taskType("Task1"/"Task2"), answer(写作思路≤60词), explanation, locatorText, wordLimit(150或250)}
+
+            【重要】题型判定规则：
+            - 如果题目要求从一个选项列表（如 A-P、A-H 等）中选择答案，必须标记为 "mcq"，并在 options 中列出所有可选项。
+            - options 必须是 JSON 对象格式，每个选项值必须是完整的选项描述文字（不能只写字母标识）。
+              例如：{"A":"Rainforests are in danger.","B":"Climate change is the main threat.","C":"..."}
+            - 如果一组题目共享同一个选项列表（如 Questions 9-13 从 A-P 中选），每道题的 options 都必须包含完整选项列表。
+            - 只有答案是从文章中提取的单词或短语时才使用 "fill"。
+            - 选项列表可能出现在一组题目的前面或后面，需要关联到对应的题目。
 
             通用规则：
             - 每个分区内保留原始题号。
             - locatorText：从文章或题目中截取 3-8 个词的原文短语，不可为空。
             - answer：若有答案区则复制；否则从文章推导。
+            - 输入文本可能来自 OCR，包含乱码字符，请忽略噪声，尽力识别有效内容。
+            - questions 数组绝不能为空，只要能识别出题目标记就必须提取。
             - 只返回合法 JSON，不要使用 markdown 代码块，不要输出任何额外文字。
 
             返回格式：
@@ -296,6 +314,15 @@ public class AiParseService {
             section.putIfAbsent("name", "");
             section.putIfAbsent("type", "reading");
             result = Map.of("sections", List.of(section));
+        }
+        // Post-process each section to fix letter-only MCQ options
+        Object sectionsObj = result.get("sections");
+        if (sectionsObj instanceof List) {
+            for (Object secObj : (List<?>) sectionsObj) {
+                if (secObj instanceof Map) {
+                    fixLetterOnlyMcqOptions((Map<String, Object>) secObj, input);
+                }
+            }
         }
         return result;
     }
@@ -446,6 +473,135 @@ public class AiParseService {
         this.objectMapper = objectMapper;
     }
 
+    // ── Generic DeepSeek call helper ──────────────────────────────────────────
+
+    private String callDeepSeek(String systemPrompt, String userMessage, int tokens, int timeoutSec) throws Exception {
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("max_tokens", tokens);
+        requestBody.put("response_format", Map.of("type", "json_object"));
+        requestBody.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userMessage)
+        ));
+        String requestJson = objectMapper.writeValueAsString(requestBody);
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(timeoutSec))
+                .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            throw new RuntimeException("DeepSeek API错误 HTTP " + response.statusCode() + ": " + response.body());
+        }
+        JsonNode root = objectMapper.readTree(response.body());
+        return root.path("choices").get(0).path("message").path("content").asText();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── Workflow: 分步解析（仅 DeepSeek）──────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+
+    // Step 1: 提取文章 + 识别题组结构（不要答案和解释，输出极小）
+    private static final String WORKFLOW_STEP1_PROMPT = """
+            你是一个雅思（IELTS）试卷结构分析器。给定从 PDF/Word 中提取的原始文本，请完成以下任务：
+
+            1. 提取"passages"（文章正文），字符串数组：
+               - 只包含阅读文章/听力原文的正文内容，逐字保留原文（英文就输出英文）。
+               - 不要包含任何题目、指令、选项。
+
+            2. 识别"questionGroups"（题组列表），每个题组包含：
+               - "range": 题号范围，如 "1-8"、"9-13"、"14"
+               - "type": 题型，取值 "tfng" | "mcq" | "fill" | "write"
+               - "instruction": 题组指令原文（如 "Do the following statements agree with..."、"Choose the correct responses A-P"、"Complete the notes below. Choose NO MORE THAN TWO WORDS..."）
+               - "options": 若题目有共享选项列表（如 A-P），以对象形式列出 {"A":"…","B":"…",...}；若无则省略
+               - "questions": 该组内每道题的原始文本数组，如 ["The plight of the rainforests has largely been ignored by the media.", "Children only accept opinions on rainforests that they encounter in their classrooms."]
+
+            重要规则：
+            - 输入文本可能含 OCR 噪声（乱码字符），请忽略噪声，尽力识别有效内容。
+            - questionGroups 绝不能为空。只要文本中出现 "Questions"、编号、TRUE/FALSE/NOT GIVEN、选项列表等标记，就必须识别。
+            - 题型判定：选项列表选择题（如 A-P 中选）→ "mcq"；从文章提取词语填空 → "fill"；判断题 → "tfng"；写作 → "write"。
+            - 只返回 JSON 对象，不要输出 markdown 代码块或额外文字。
+
+            输出格式：
+            {
+              "passages": ["文章正文..."],
+              "questionGroups": [
+                {"range":"1-8", "type":"tfng", "instruction":"Do the following...", "questions":["题目1原文","题目2原文",...]},
+                {"range":"9-13", "type":"mcq", "instruction":"Choose the correct responses A-P", "options":{"A":"...","B":"...",...}, "questions":["题目9原文","题目10原文",...]},
+                {"range":"14", "type":"mcq", "instruction":"Choose the correct letter, A, B, C, D or E", "options":{"A":"...","B":"...",...}, "questions":["题目14原文"]}
+              ]
+            }
+            """;
+
+    // Step 2: 给定文章和一组题目，生成每题的答案、解释、定位文本
+    private static final String WORKFLOW_STEP2_PROMPT = """
+            你是一个雅思（IELTS）答案解析专家。我会提供：
+            1. 阅读文章（passage）
+            2. 一组题目（含题号、题型、题干、可能的选项）
+
+            请为每道题生成：
+            - questionNumber: 题号（整数）
+            - type: 题型（原样返回）
+            - text: 题干原文（原样返回）
+            - options: 选项（原样返回，若有的话）
+            - answer: 正确答案
+              · tfng → "TRUE"/"FALSE"/"NOT GIVEN"（或 "YES"/"NO"/"NOT GIVEN"）
+              · mcq  → 选项字母如 "A"、"B" 等
+              · fill → 从文章中提取的单词或短语（若有字数限制须遵守）
+            - explanation: 中英混合的解题说明（2-3句，引用文章原文佐证）
+            - locatorText: 从文章中截取的 3-8 个词的原文定位短语
+
+            规则：
+            - 只返回 JSON 对象 {"questions":[...]}，不要 markdown 代码块或额外文字。
+            - answer 必须基于文章内容推导，不能胡编。
+            - explanation 要具体引用文章原文。
+            """;
+
+    /**
+     * Workflow Step 1: Extract passages and question group skeleton (no answers).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> workflowStep1(String rawText) throws Exception {
+        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key未配置");
+        String testText = findTestContent(rawText);
+        String input = testText.length() > textMaxChars
+                ? testText.substring(0, textMaxChars) + "\n...[截断]"
+                : testText;
+        log.info("Workflow Step1: sending {} chars to DeepSeek", input.length());
+        String content = callDeepSeek(WORKFLOW_STEP1_PROMPT,
+                "请分析以下IELTS试题文本，提取文章和题组结构：\n\n" + input,
+                4096, 90);
+        log.info("Workflow Step1: response length={}", content.length());
+        return objectMapper.readValue(content, Map.class);
+    }
+
+    /**
+     * Workflow Step 2: Given passage and one question group, generate answers and explanations.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> workflowStep2(String passageText, Map<String, Object> questionGroup) throws Exception {
+        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key未配置");
+        // Build a concise user message with passage + group info
+        String groupJson = objectMapper.writeValueAsString(questionGroup);
+        String userMsg = "【文章】\n" + passageText + "\n\n【题组信息】\n" + groupJson;
+
+        // Limit passage to avoid token overflow
+        if (userMsg.length() > textMaxChars) {
+            String trimmedPassage = passageText.substring(0, Math.max(1000, textMaxChars - groupJson.length() - 200));
+            userMsg = "【文章】\n" + trimmedPassage + "\n...[截断]\n\n【题组信息】\n" + groupJson;
+        }
+
+        String range = String.valueOf(questionGroup.getOrDefault("range", "?"));
+        log.info("Workflow Step2: group {} – sending {} chars", range, userMsg.length());
+        String content = callDeepSeek(WORKFLOW_STEP2_PROMPT, userMsg, 4096, 90);
+        log.info("Workflow Step2: group {} – response length={}", range, content.length());
+        return objectMapper.readValue(content, Map.class);
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> translateWithContext(String passage, String selectedText) throws Exception {
         if (!isConfigured()) throw new IllegalStateException("DeepSeek API key未配置");
@@ -491,5 +647,109 @@ public class AiParseService {
         String content = message != null ? Objects.toString(message.get("content"), "") : "";
         if (content.isBlank()) throw new RuntimeException("DeepSeek 翻译结果为空");
         return objectMapper.readValue(content, Map.class);
+    }
+
+    /**
+     * Post-processing: detect MCQ questions with letter-only options (e.g. ["A","B","C",...])
+     * and attempt to extract full option descriptions from the raw input text.
+     */
+    @SuppressWarnings("unchecked")
+    private void fixLetterOnlyMcqOptions(Map<String, Object> parsed, String rawText) {
+        Object questionsObj = parsed.get("questions");
+        if (!(questionsObj instanceof List)) return;
+        List<Map<String, Object>> questions = (List<Map<String, Object>>) questionsObj;
+
+        // Find MCQ questions with letter-only options
+        List<Map<String, Object>> broken = new ArrayList<>();
+        for (Map<String, Object> q : questions) {
+            if (!"mcq".equals(q.get("type"))) continue;
+            if (isLetterOnlyOptions(q.get("options"))) broken.add(q);
+        }
+        if (broken.isEmpty()) return;
+
+        // Extract option descriptions from raw text
+        Map<String, String> optionMap = extractOptionDescriptions(rawText);
+        if (optionMap.size() < 3) {
+            log.warn("fixLetterOnlyMcqOptions: found {} broken MCQs but could only extract {} options from raw text",
+                    broken.size(), optionMap.size());
+            return;
+        }
+        log.info("fixLetterOnlyMcqOptions: enriching {} MCQ questions with {} extracted options", broken.size(), optionMap.size());
+
+        for (Map<String, Object> q : broken) {
+            Object opts = q.get("options");
+            Map<String, String> enriched = new LinkedHashMap<>();
+            if (opts instanceof List) {
+                for (Object o : (List<?>) opts) {
+                    String letter = String.valueOf(o).trim();
+                    enriched.put(letter, optionMap.getOrDefault(letter, letter));
+                }
+            } else if (opts instanceof Map) {
+                for (Map.Entry<String, Object> e : ((Map<String, Object>) opts).entrySet()) {
+                    enriched.put(e.getKey(), optionMap.getOrDefault(e.getKey(), String.valueOf(e.getValue())));
+                }
+            }
+            q.put("options", enriched);
+        }
+    }
+
+    private boolean isLetterOnlyOptions(Object opts) {
+        if (opts instanceof List) {
+            List<?> list = (List<?>) opts;
+            return list.size() >= 3 && list.stream().allMatch(o -> {
+                String s = String.valueOf(o).trim();
+                return s.length() == 1 && s.charAt(0) >= 'A' && s.charAt(0) <= 'Z';
+            });
+        }
+        if (opts instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) opts;
+            return map.size() >= 3 && map.entrySet().stream().allMatch(e -> {
+                String k = String.valueOf(e.getKey()).trim();
+                String v = String.valueOf(e.getValue()).trim();
+                return k.equals(v) && k.length() == 1;
+            });
+        }
+        return false;
+    }
+
+    /**
+     * Scan raw text for option list patterns like:
+     *   A  There is a complicated combination...
+     *   B  The rainforests are being destroyed...
+     * Returns a map of letter -> full description text.
+     */
+    private Map<String, String> extractOptionDescriptions(String rawText) {
+        Map<String, String> options = new LinkedHashMap<>();
+        if (rawText == null) return options;
+
+        String[] lines = rawText.split("\\n");
+        String currentLetter = null;
+        StringBuilder currentText = new StringBuilder();
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // Match: single letter A-P followed by 2+ spaces then text
+            java.util.regex.Matcher m = OPTION_LINE_PATTERN.matcher(trimmed);
+            if (m.matches()) {
+                if (currentLetter != null) {
+                    options.put(currentLetter, currentText.toString().trim());
+                }
+                currentLetter = m.group(1);
+                currentText = new StringBuilder(m.group(2));
+            } else if (currentLetter != null && !trimmed.isEmpty()
+                    && !trimmed.matches("^\\d+\\s+.*")
+                    && !trimmed.matches("^(?i)questions?\\s+.*")
+                    && !trimmed.matches("^[A-P]\\s*$")) {
+                // Continuation line of the current option
+                currentText.append(" ").append(trimmed);
+            } else if (currentLetter != null) {
+                options.put(currentLetter, currentText.toString().trim());
+                currentLetter = null;
+            }
+        }
+        if (currentLetter != null) {
+            options.put(currentLetter, currentText.toString().trim());
+        }
+        return options;
     }
 }

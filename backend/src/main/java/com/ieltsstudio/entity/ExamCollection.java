@@ -6,8 +6,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("exams")
-public class Exam {
+@TableName("exam_collections")
+public class ExamCollection {
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -18,21 +18,8 @@ public class Exam {
 
     private String description;
 
-    private String type; // reading, listening, writing
-
-    private String status; // uploading, processing, ready, error
-
-    private Integer questionCount;
-
+    /** Total duration in minutes (sum of items or user-set) */
     private Integer duration;
-
-    private String difficulty;
-
-    private String tags; // JSON array, e.g. ["Academic","Writing","Task 2"]
-
-    private String fileKey; // MinIO file key
-
-    private String parseResult; // JSON: parsed exam data
 
     @TableLogic
     private Integer deleted;
@@ -42,4 +29,8 @@ public class Exam {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+
+    /** Populated by query, not stored */
+    @TableField(exist = false)
+    private Integer examCount;
 }

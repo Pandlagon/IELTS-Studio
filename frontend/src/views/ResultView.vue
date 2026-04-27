@@ -78,7 +78,7 @@
           </div>
           <div class="header-actions">
             <router-link to="/exams" class="btn-secondary">返回试卷列表</router-link>
-            <button v-if="!isWritingExam" class="btn-primary" @click="showPassage = !showPassage">
+            <button v-if="!isWritingExam || rawPassageText" class="btn-primary" @click="showPassage = !showPassage">
               {{ showPassage ? '隐藏原文' : '查看原文高亮' }}
             </button>
           </div>
@@ -96,6 +96,27 @@
               </span>
             </div>
             <div class="passage-content" ref="passageRef">
+              <!-- Visual Data Panel (charts + tables) -->
+              <div v-if="passageVisual.hasVisual" class="result-visual-panel">
+                <div class="rvp-header">
+                  <span class="rvp-title">📊 图表数据可视化</span>
+                  <span class="rvp-sub" v-if="passageVisual.chartType">{{ passageVisual.chartType }}</span>
+                </div>
+                <div v-if="passageVisual.summary.length" class="rvp-summary">
+                  <div class="rvp-summary-item" v-for="(s, i) in passageVisual.summary" :key="`sum-${i}`">{{ s }}</div>
+                </div>
+                <div v-if="passageVisual.chartData.length" class="rvp-charts">
+                  <div v-if="passageVisual.chartType && passageVisual.chartType.toLowerCase().includes('bar')" ref="writeBarChartRef" class="rvp-chart-canvas"></div>
+                  <div v-if="passageVisual.chartType && passageVisual.chartType.toLowerCase().includes('pie')" ref="writePieChartRef" class="rvp-chart-canvas"></div>
+                </div>
+                <div v-if="passageVisual.table.headers.length && passageVisual.table.rows.length" class="rvp-table-wrap">
+                  <div v-if="passageVisual.table.title" class="rvp-table-title">{{ passageVisual.table.title }}</div>
+                  <table class="rvp-table">
+                    <thead><tr><th v-for="(h, hi) in passageVisual.table.headers" :key="hi">{{ h }}</th></tr></thead>
+                    <tbody><tr v-for="(row, ri) in passageVisual.table.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
               <template v-for="(para, idx) in passageParagraphs" :key="idx">
                 <template v-if="para.isHeader">
                   <hr v-if="idx > 0" class="result-passage-divider" />
@@ -339,10 +360,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useExamStore } from '@/stores/exam'
 import NavBar from '@/components/NavBar.vue'
+import * as echarts from 'echarts'
 
 const route = useRoute()
 const router = useRouter()
@@ -363,6 +385,10 @@ const correctRate = computed(() => {
 const showPassage = ref(false)
 const reviewTab = ref('all')
 const passageRef = ref()
+const writeBarChartRef = ref(null)
+const writePieChartRef = ref(null)
+let writeBarChart = null
+let writePieChart = null
 
 const reviewTabs = [
   { label: '全部', value: 'all' },
@@ -379,10 +405,21 @@ const filteredQuestions = computed(() => {
 
 const PASSAGE_MARKER = /^(P\d+\b|【[^】]+】)/
 
-const passageParagraphs = computed(() => {
+const rawPassageText = computed(() => {
   const section = examStore.currentExam?.sections?.[0]
-  if (!section?.passage) return []
-  return section.passage.split('\n\n').filter(Boolean).map((para, idx) => {
+  if (section?.passage) return section.passage
+  if (result.value?.passages?.length) {
+    return result.value.passages.map(p => `【${p.title}】\n${p.passage}`).join('\n\n')
+  }
+  return ''
+})
+
+const passageVisual = computed(() => buildWriteVisual(rawPassageText.value))
+
+const passageParagraphs = computed(() => {
+  if (!rawPassageText.value) return []
+  const cleaned = passageVisual.value?.hasVisual ? stripVisualBlocks(rawPassageText.value) : rawPassageText.value
+  return cleaned.split('\n\n').filter(Boolean).map((para, idx) => {
     const markerMatch = para.match(PASSAGE_MARKER)
     const isHeader = !!markerMatch
     const label = markerMatch ? markerMatch[1] : null
@@ -482,6 +519,159 @@ function scrollToLocator(q) {
     }
   }
 }
+
+// ── Visual data parsing ──────────────────────────────────────
+function extractTaggedBlock(text, tag) {
+  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`\\[${escaped}\\]([\\s\\S]*?)(?=\\n\\[[^\\]]+\\]|$)`, 'i')
+  const m = text.match(re)
+  return m ? m[1].trim() : ''
+}
+
+function buildWriteVisual(raw) {
+  const text = (raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const visualBlock = extractTaggedBlock(text, 'Visual Data Summary')
+  const tableBlock = extractTaggedBlock(text, 'Table Data')
+  let chartType = ''
+  if (visualBlock) {
+    const line = visualBlock.split('\n').map(l => l.trim()).find(l => /chartType\s*[:：]/i.test(l))
+    if (line) chartType = line.replace(/.*chartType\s*[:：]\s*/i, '').trim()
+  }
+  const summary = visualBlock
+    ? visualBlock.split('\n').map(l => l.trim()).filter(Boolean)
+        .filter(l => !/^chartType\s*[:：]/i.test(l) && !/^chartTitle\s*[:：]/i.test(l))
+        .map(l => l.replace(/^[-*]\s*/, '')).slice(0, 5)
+    : []
+  let tableTitle = ''
+  if (tableBlock) {
+    const titleLine = tableBlock.split('\n').map(l => l.trim()).find(l => /^tableTitle\s*[:：]/i.test(l))
+    if (titleLine) tableTitle = titleLine.replace(/^tableTitle\s*[:：]\s*/i, '').trim()
+  }
+  const tableLines = findLongestTableBlock(tableBlock || text)
+  const table = parseVisualTable(tableLines, tableTitle)
+  let chartData = extractVisualChartData(visualBlock || text)
+  if (!chartData.length && table.rows.length) chartData = extractChartDataFromTable(table)
+  return { hasVisual: chartData.length > 0 || table.rows.length > 0, chartType, summary, chartData, table }
+}
+
+function stripVisualBlocks(text) {
+  if (!text) return ''
+  return text
+    .replace(/\n?\[Visual Data Summary\][\s\S]*?(?=\n\[[^\]]+\]|\n\n【|$)/i, '\n')
+    .replace(/\n?\[Table Data\][\s\S]*?(?=\n\[[^\]]+\]|\n\n【|$)/i, '\n')
+    .replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function isMarkdownTableLine(line) {
+  if (!line || !line.includes('|')) return false
+  return parseMarkdownRow(line).length >= 2
+}
+
+function parseMarkdownRow(line) {
+  return line.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - (a[a.length - 1] === '' ? 1 : 0))
+}
+
+function findLongestTableBlock(text) {
+  const lines = (text || '').split('\n')
+  let best = [], cur = []
+  for (const line of lines) {
+    const t = line.trim()
+    if (isMarkdownTableLine(t)) { cur.push(t); continue }
+    if (cur.length > best.length) best = [...cur]
+    cur = []
+  }
+  if (cur.length > best.length) best = cur
+  return best.length >= 2 ? best : []
+}
+
+function parseVisualTable(tableLines, tableTitle = '') {
+  if (!tableLines.length) return { headers: [], rows: [], title: tableTitle }
+  const isSep = (cells) => cells.every(c => /^[-:]+$/.test(c.trim()) || c.trim() === '')
+  const rows = tableLines.map(parseMarkdownRow).filter(r => r.length >= 2)
+  if (!rows.length) return { headers: [], rows: [], title: tableTitle }
+  const sepIdx = rows.findIndex(r => isSep(r))
+  if (sepIdx > 0) {
+    return { headers: rows[0], rows: rows.slice(sepIdx + 1).filter(r => !isSep(r)), title: tableTitle }
+  }
+  return { headers: rows[0], rows: rows.slice(1).filter(r => !isSep(r)), title: tableTitle }
+}
+
+function extractVisualChartData(text) {
+  if (!text) return []
+  const items = []
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  for (const line of lines) {
+    const m = line.match(/^(.+?)\s*[:：]\s*([\d.]+)\s*%?$/i)
+    if (m && !/chartType|tableTitle|chartTitle/i.test(m[1])) {
+      items.push({ label: m[1].trim(), value: parseFloat(m[2]) })
+    }
+  }
+  return items
+}
+
+function extractChartDataFromTable(table) {
+  if (!table.rows.length || table.headers.length < 2) return []
+  return table.rows.map(row => {
+    const label = row[0] || ''
+    const val = parseFloat((row[row.length - 1] || '').replace('%', ''))
+    return isNaN(val) ? null : { label, value: val }
+  }).filter(Boolean)
+}
+
+// ── Chart rendering ──────────────────────────────────────────
+function disposeWriteCharts() {
+  if (writeBarChart) { writeBarChart.dispose(); writeBarChart = null }
+  if (writePieChart) { writePieChart.dispose(); writePieChart = null }
+}
+
+function renderWriteCharts() {
+  const data = passageVisual.value?.chartData || []
+  const chartType = (passageVisual.value?.chartType || '').toLowerCase()
+  if (!data.length) { disposeWriteCharts(); return }
+  const shouldRenderBar = chartType.includes('bar')
+  const shouldRenderPie = chartType.includes('pie')
+  if (!shouldRenderBar && !shouldRenderPie) return
+
+  if (shouldRenderBar && writeBarChartRef.value) {
+    if (!writeBarChart) writeBarChart = echarts.init(writeBarChartRef.value)
+    writeBarChart.setOption({
+      animationDuration: 450, color: ['#4AA36F'],
+      grid: { left: 12, right: 12, top: 28, bottom: 36, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: { type: 'category', data: data.map(d => d.label), axisLabel: { color: '#475569', fontSize: 11, interval: 0, rotate: data.length > 4 ? 25 : 0 }, axisTick: { alignWithLabel: true } },
+      yAxis: { type: 'value', axisLabel: { color: '#64748B', fontSize: 11 }, splitLine: { lineStyle: { color: '#E2E8F0' } } },
+      series: [{ type: 'bar', data: data.map(d => Number(d.value) || 0), barMaxWidth: 28, itemStyle: { borderRadius: [6, 6, 0, 0] } }],
+    }, true)
+  }
+
+  if (shouldRenderPie && writePieChartRef.value) {
+    if (!writePieChart) writePieChart = echarts.init(writePieChartRef.value)
+    writePieChart.setOption({
+      animationDuration: 450,
+      color: ['#2E8B57', '#3CAEA3', '#F6C85F', '#F08A5D', '#6A89CC', '#B8DE6F', '#7DCEA0', '#5DADE2'],
+      tooltip: { trigger: 'item' },
+      legend: { bottom: 0, left: 'center', textStyle: { color: '#475569', fontSize: 11 } },
+      series: [{
+        type: 'pie', radius: ['45%', '70%'], center: ['50%', '42%'],
+        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 1 },
+        label: { formatter: ({ name, percent }) => `${name}\n${Math.round(percent)}%`, color: '#334155', fontSize: 10 },
+        data: data.map(d => ({ name: d.label, value: Math.max(Math.abs(Number(d.value) || 0), 0.0001) })),
+      }],
+    }, true)
+  }
+}
+
+watch(
+  () => [showPassage.value, passageVisual.value?.chartData?.map(i => `${i.label}:${i.value}`).join('|')],
+  async () => {
+    if (!showPassage.value) return
+    await nextTick()
+    requestAnimationFrame(() => renderWriteCharts())
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => { disposeWriteCharts() })
 
 onMounted(() => {
   if (!result.value) {
@@ -709,6 +899,90 @@ onMounted(() => {
 .result-para {
   margin-bottom: 14px;
   text-align: justify;
+}
+
+/* Visual Data Panel */
+.result-visual-panel {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #F0FAF4;
+  border-radius: 12px;
+  border: 1px solid #D1E7D7;
+}
+.rvp-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.rvp-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1B4332;
+}
+.rvp-sub {
+  font-size: 12px;
+  color: #2D6A4F;
+  background: #D4F5E9;
+  border-radius: 12px;
+  padding: 2px 10px;
+}
+.rvp-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.rvp-summary-item {
+  font-size: 13px;
+  color: #334155;
+  padding-left: 12px;
+  position: relative;
+}
+.rvp-summary-item::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #2D6A4F;
+}
+.rvp-charts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.rvp-chart-canvas {
+  width: 100%;
+  height: 260px;
+  min-width: 240px;
+}
+.rvp-table-wrap {
+  overflow-x: auto;
+}
+.rvp-table-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1B4332;
+  margin-bottom: 6px;
+}
+.rvp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.rvp-table th {
+  background: #1B4332;
+  color: white;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+}
+.rvp-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #E2E8F0;
+}
+.rvp-table tr:nth-child(even) td {
+  background: #F8FAFC;
 }
 
 :deep(.hl-red) {

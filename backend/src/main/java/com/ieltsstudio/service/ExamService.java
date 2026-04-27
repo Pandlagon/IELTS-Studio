@@ -60,6 +60,11 @@ public class ExamService {
         return questionMapper.findByExamId(examId);
     }
 
+    /** 更新试卷信息 */
+    public void updateExam(Exam exam) {
+        examMapper.updateById(exam);
+    }
+
     // ─── 试卷上传 ──────────────────────────────────────────────────────────────
 
     /**

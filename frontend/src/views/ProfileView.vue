@@ -78,7 +78,7 @@
                 v-for="record in examHistory.slice(0, 10)"
                 :key="record.submittedAt"
                 class="history-item card-sm card"
-                :class="{ clickable: !!record.recordId }"
+                :class="{ clickable: !!record.recordId || record.isCollection }"
                 @click="openRecord(record)"
               >
                 <div class="history-item-left">
@@ -279,6 +279,16 @@ async function doCheckin() {
 }
 
 async function openRecord(record) {
+  // Handle collection history entries
+  if (record.isCollection && record.collectionId) {
+    const ok = await examStore.loadCollectionResult(record.collectionId)
+    if (ok) {
+      router.push(`/exam/${record.examId}/result`)
+    } else {
+      ElMessage.warning('试卷集记录加载失败')
+    }
+    return
+  }
   if (!record.recordId) return
   const ok = await examStore.loadRecord(record.recordId)
   if (ok) {

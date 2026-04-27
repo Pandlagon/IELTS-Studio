@@ -102,8 +102,9 @@ public class AsyncParseService {
                     }
                 }
                 
-                Map<String, Object> parsed = parseSingle(examId, text);
-                commitSection(examId, null, parsed, null);
+                // Use workflow parse (Step1 structure + Step2 per-group answers)
+                Map<String, Object> parsed = workflowParse(examId, text);
+                commitSection(examId, null, parsed, null, text);
             }
         } catch (Exception e) {
             log.error("Failed to parse exam {}", examId, e);
@@ -128,8 +129,8 @@ public class AsyncParseService {
             if (extractedText == null || extractedText.trim().length() < 80) {
                 throw new RuntimeException("图片普通解析需要前端 OCR 提取文字（extractedText 过短）");
             }
-            Map<String, Object> parsed = parseSingle(examId, extractedText);
-            commitSection(examId, null, parsed, null);
+            Map<String, Object> parsed = workflowParse(examId, extractedText);
+            commitSection(examId, null, parsed, null, extractedText);
         } catch (Exception e) {
             log.error("Failed to parse exam {} (images)", examId, e);
             markError(examId);
@@ -255,10 +256,10 @@ public class AsyncParseService {
         }
 
         if (parsedChunks == 0) {
-            // All chunks failed – fall back to single parse
-            log.warn("Exam {} – all chunks failed, falling back to single parse", examId);
-            Map<String, Object> parsed = parseSingle(examId, text);
-            commitSection(examId, null, parsed, original);
+            // All chunks failed – fall back to workflow parse
+            log.warn("Exam {} – all chunks failed, falling back to workflow parse", examId);
+            Map<String, Object> parsed = workflowParse(examId, text);
+            commitSection(examId, null, parsed, original, text);
             return;
         }
 
@@ -283,7 +284,7 @@ public class AsyncParseService {
         boolean anyWrite = allQuestions.stream().anyMatch(q -> "write".equals(q.get("type")));
         original.setType(anyWrite ? "writing" : original.getType());
 
-        commitSection(examId, null, merged, original);
+        commitSection(examId, null, merged, original, text);
         log.info("Exam {} merged {} chunk(s) – {} unique questions", examId, parsedChunks, deduped.size());
     }
 
@@ -308,17 +309,143 @@ public class AsyncParseService {
         return fileParseService.parseExamContent(text);
     }
 
+    // ── Workflow parse: Step1 structure + Step2 per-group answers ──────────────
+
+    /**
+     * Two-step workflow parse using DeepSeek:
+     *   Step 1: Extract passages + question group skeleton (type, range, options, question texts)
+     *   Step 2: For each group, call AI to generate answers + explanations
+     * Falls back to parseSingle if workflow fails or DeepSeek is not configured.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> workflowParse(Long examId, String text) throws Exception {
+        if (text == null || text.trim().length() < 80) {
+            throw new RuntimeException("提取文字过少（" + (text == null ? 0 : text.trim().length())
+                    + " 字符），可能是扫描版PDF，请使用精准解析或上传Word格式");
+        }
+
+        if (!aiParseService.isConfigured()) {
+            log.info("Exam {} – AI not configured, using regex parser", examId);
+            return fileParseService.parseExamContent(text);
+        }
+
+        try {
+            // ── Step 1: Structure extraction ──
+            log.info("Exam {} – Workflow Step1: extracting structure...", examId);
+            Map<String, Object> step1 = aiParseService.workflowStep1(text);
+
+            List<String> passages = (List<String>) step1.get("passages");
+            List<Map<String, Object>> groups = (List<Map<String, Object>>) step1.get("questionGroups");
+
+            if (groups == null || groups.isEmpty()) {
+                log.warn("Exam {} – Workflow Step1 returned 0 groups, falling back to parseSingle", examId);
+                return parseSingle(examId, text);
+            }
+
+            log.info("Exam {} – Workflow Step1: {} passages, {} question groups", examId,
+                    passages == null ? 0 : passages.size(), groups.size());
+
+            // ── Step 2: Per-group answer generation ──
+            String passageText = (passages != null && !passages.isEmpty())
+                    ? String.join("\n\n", passages) : "";
+            List<Map<String, Object>> allQuestions = new ArrayList<>();
+
+            for (int i = 0; i < groups.size(); i++) {
+                Map<String, Object> group = groups.get(i);
+                String range = String.valueOf(group.getOrDefault("range", "group" + (i + 1)));
+                try {
+                    Map<String, Object> step2Result = aiParseService.workflowStep2(passageText, group);
+                    List<Map<String, Object>> groupQuestions = (List<Map<String, Object>>) step2Result.get("questions");
+                    if (groupQuestions != null && !groupQuestions.isEmpty()) {
+                        // Ensure options from Step1 are carried over if Step2 didn't include them
+                        Object groupOptions = group.get("options");
+                        if (groupOptions != null) {
+                            for (Map<String, Object> q : groupQuestions) {
+                                if (q.get("options") == null) {
+                                    q.put("options", groupOptions);
+                                }
+                            }
+                        }
+                        allQuestions.addAll(groupQuestions);
+                        log.info("Exam {} – Workflow Step2 group '{}': {} questions resolved",
+                                examId, range, groupQuestions.size());
+                    } else {
+                        log.warn("Exam {} – Workflow Step2 group '{}': returned 0 questions", examId, range);
+                        // Fallback: build questions from Step1 skeleton without answers
+                        buildFallbackQuestions(group, allQuestions);
+                    }
+                } catch (Exception step2Ex) {
+                    log.warn("Exam {} – Workflow Step2 group '{}' failed: {}", examId, range, step2Ex.getMessage());
+                    buildFallbackQuestions(group, allQuestions);
+                }
+            }
+
+            // Assemble final result
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("passages", passages != null ? passages : List.of());
+            result.put("questions", allQuestions);
+            log.info("Exam {} – Workflow complete: {} passages, {} questions",
+                    examId, passages != null ? passages.size() : 0, allQuestions.size());
+            return result;
+
+        } catch (Exception workflowEx) {
+            log.warn("Exam {} – Workflow failed ({}), falling back to parseSingle", examId, workflowEx.getMessage());
+            return parseSingle(examId, text);
+        }
+    }
+
+    /**
+     * Build fallback questions from Step1 skeleton when Step2 fails for a group.
+     * These will have text but no answer/explanation (user can still see the questions).
+     */
+    @SuppressWarnings("unchecked")
+    private void buildFallbackQuestions(Map<String, Object> group, List<Map<String, Object>> target) {
+        String type = String.valueOf(group.getOrDefault("type", "fill"));
+        String range = String.valueOf(group.getOrDefault("range", ""));
+        List<String> questionTexts = (List<String>) group.get("questions");
+        Object options = group.get("options");
+
+        // Parse range like "1-8" or "14"
+        int startNum = 1;
+        try {
+            startNum = Integer.parseInt(range.contains("-") ? range.split("-")[0].trim() : range.trim());
+        } catch (NumberFormatException ignored) {}
+
+        if (questionTexts != null) {
+            for (int i = 0; i < questionTexts.size(); i++) {
+                Map<String, Object> q = new LinkedHashMap<>();
+                q.put("questionNumber", startNum + i);
+                q.put("type", type);
+                q.put("text", questionTexts.get(i));
+                q.put("answer", "");
+                q.put("explanation", "解析失败，请手动作答");
+                q.put("locatorText", "");
+                if (options != null) q.put("options", options);
+                target.add(q);
+            }
+        }
+    }
+
     // ── Persist one section to DB ─────────────────────────────────────────────
+
+    /**
+     * Backward-compatible overload without rawText.
+     */
+    private void commitSection(Long examId, Map<String, Object> section,
+                               Map<String, Object> parsed, Exam examHint) throws Exception {
+        commitSection(examId, section, parsed, examHint, null);
+    }
 
     /**
      * @param examId   target exam record id
      * @param section  if non-null, use section map directly (multi-section path)
      * @param parsed   if non-null, use this parsed map (single-section path)
      * @param examHint pre-loaded Exam entity to update in-place (may be null → load from DB)
+     * @param rawText  original raw text input (for passage recovery if AI truncates)
      */
     @SuppressWarnings("unchecked")
     private void commitSection(Long examId, Map<String, Object> section,
-                               Map<String, Object> parsed, Exam examHint) throws Exception {
+                               Map<String, Object> parsed, Exam examHint, String rawText) throws Exception {
         Map<String, Object> data = section != null ? section : parsed;
         if (!(data instanceof LinkedHashMap)) {
             data = new LinkedHashMap<>(data);
@@ -328,6 +455,20 @@ public class AsyncParseService {
         List<Map<String, Object>> questions = (List<Map<String, Object>>) data.get("questions");
         List<String> passages = (List<String>) data.get("passages");
 
+        // ── Passage recovery: if AI truncated passage due to token limits, extract from raw text ──
+        if (rawText != null && rawText.length() > 500) {
+            int aiPassageLen = passages == null ? 0 : passages.stream().mapToInt(String::length).sum();
+            if (aiPassageLen < rawText.length() / 4) {
+                String recovered = extractPassageFromRawText(rawText);
+                if (recovered != null && recovered.length() > aiPassageLen) {
+                    log.info("Exam {} – AI passage too short ({} chars), recovered {} chars from raw text",
+                            examId, aiPassageLen, recovered.length());
+                    passages = new ArrayList<>(List.of(recovered));
+                    data.put("passages", passages);
+                }
+            }
+        }
+
         // Fix common reading parse issues:
         // 1) Question-group instructions (e.g. "Choose NO MORE THAN TWO WORDS...") mistakenly included in passages
         // 2) Passage and questions coupled in same block → split by detecting question numbering
@@ -335,6 +476,34 @@ public class AsyncParseService {
         normalizeReadingInstructionsAndSplit(data);
         questions = (List<Map<String, Object>>) data.get("questions");
         passages = (List<String>) data.get("passages");
+
+        // ── Fallback: AI returned 0 questions but passage contains question text ──
+        // Re-parse the combined text with AI if we detect question markers in passages
+        if ((questions == null || questions.isEmpty()) && passages != null && !passages.isEmpty()) {
+            String combined = String.join("\n\n", passages);
+            if (combined.toLowerCase().contains("questions") && 
+                    Pattern.compile("\\b(?:TRUE|FALSE|NOT GIVEN|YES|NO|Choose the correct letter|answer sheet|on your answer sheet)\\b|^\\s*\\d{1,2}\\s+[A-Z][a-z]", Pattern.CASE_INSENSITIVE | Pattern.MULTILINE).matcher(combined).find()) {
+                log.warn("Exam {} – AI returned 0 questions but passages contain question markers, retrying parse", examId);
+                try {
+                    Map<String, Object> retryResult = aiParseService.isConfigured()
+                            ? aiParseService.parseWithAi(combined)
+                            : fileParseService.parseExamContent(combined);
+                    List<Map<String, Object>> retryQ = (List<Map<String, Object>>) retryResult.get("questions");
+                    if (retryQ != null && !retryQ.isEmpty()) {
+                        List<String> retryP = (List<String>) retryResult.get("passages");
+                        if (retryP != null && !retryP.isEmpty()) {
+                            data.put("passages", retryP);
+                            passages = retryP;
+                        }
+                        data.put("questions", retryQ);
+                        questions = retryQ;
+                        log.info("Exam {} – Retry parse succeeded: {} questions recovered", examId, retryQ.size());
+                    }
+                } catch (Exception retryEx) {
+                    log.warn("Exam {} – Retry parse also failed: {}", examId, retryEx.getMessage());
+                }
+            }
+        }
 
         exam.setParseResult(objectMapper.writeValueAsString(data));
         exam.setStatus("ready");
@@ -381,6 +550,17 @@ public class AsyncParseService {
             // normalize to a stable sequential numbering so UI/DB are consistent.
             ensureSequentialQuestionNumbers(questions);
 
+            // Pre-scan: extract shared options list (A-P / A-H style) for list-selection questions.
+            // AI often fails to attach these options to individual questions.
+            Map<String, String> sharedOptionsList = extractSharedOptionsFromText(passages);
+            if (sharedOptionsList.isEmpty()) {
+                // Fallback: extract from question explanation fields (AI often references "Option E: '...'")
+                sharedOptionsList = extractSharedOptionsFromQuestions(questions);
+            }
+            if (!sharedOptionsList.isEmpty()) {
+                log.info("Exam {} – Extracted {} shared options: {}", examId, sharedOptionsList.size(), sharedOptionsList.keySet());
+            }
+
             exam.setQuestionCount(questions.size());
             for (int i = 0; i < questions.size(); i++) {
                 Map<String, Object> q = questions.get(i);
@@ -403,11 +583,27 @@ public class AsyncParseService {
                     }
                 }
                 
-                question.setType(type);
-                question.setQuestionText(text);
-                
                 // Truncate answer to fit database column limit (VARCHAR(500))
                 String answer = (String) q.getOrDefault("answer", "");
+
+                // Auto-convert: if AI tagged as "fill" but answer is a single letter (A-Z),
+                // it's likely a list-selection / MCQ question (e.g. choose from A-P)
+                if ("fill".equals(type) && answer.trim().length() == 1 && Character.isLetter(answer.trim().charAt(0))) {
+                    type = "mcq";
+                    // Inject shared options if AI didn't provide them
+                    if (q.get("options") == null && !sharedOptionsList.isEmpty()) {
+                        q.put("options", new LinkedHashMap<>(sharedOptionsList));
+                        log.info("Exam {} – Question {} auto-converted fill→mcq with {} shared options (answer '{}')",
+                                examId, question.getQuestionNumber(), sharedOptionsList.size(), answer.trim());
+                    } else if (q.get("options") == null) {
+                        log.info("Exam {} – Question {} auto-converted fill→mcq but no shared options found (answer '{}')",
+                                examId, question.getQuestionNumber(), answer.trim());
+                    }
+                }
+
+                question.setType(type);
+                question.setQuestionText(text);
+
                 if (answer.length() > 500) {
                     answer = answer.substring(0, 500);
                     log.warn("Exam {} – Question {} answer truncated from {} to 500 chars", examId, question.getQuestionNumber(), ((String) q.get("answer")).length());
@@ -432,6 +628,48 @@ public class AsyncParseService {
                     question.setOptions(objectMapper.writeValueAsString(writeExtra));
                 } else {
                     Object opts = q.get("options");
+                    // Fix: if options is a plain string "A: text\nB: text\n...", parse to map
+                    if (opts instanceof String) {
+                        String optStr = (String) opts;
+                        Map<String, String> parsedOpts = parseOptionsTextToMap(optStr);
+                        if (!parsedOpts.isEmpty()) {
+                            opts = parsedOpts;
+                            log.info("Exam {} – Question {} parsed string options → {} entries",
+                                    examId, question.getQuestionNumber(), parsedOpts.size());
+                        }
+                    }
+                    // Fix: if options is a plain array of single-letter strings (e.g. ["A","B",...,"P"]),
+                    // replace with shared options map that has actual text content
+                    if (opts instanceof List) {
+                        List<?> optList = (List<?>) opts;
+                        boolean allSingleLetters = !optList.isEmpty() && optList.stream().allMatch(
+                                o -> o instanceof String && ((String) o).length() == 1 && Character.isLetter(((String) o).charAt(0)));
+                        if (allSingleLetters && !sharedOptionsList.isEmpty()) {
+                            // Convert letter array to map using shared options text
+                            Map<String, String> fixedOpts = new LinkedHashMap<>();
+                            for (Object o : optList) {
+                                String letter = ((String) o).toUpperCase();
+                                fixedOpts.put(letter, sharedOptionsList.getOrDefault(letter, letter));
+                            }
+                            opts = fixedOpts;
+                            log.info("Exam {} – Question {} fixed letter-array options → {} entries with text",
+                                    examId, question.getQuestionNumber(), fixedOpts.size());
+                        } else if (allSingleLetters) {
+                            // No shared options found; convert to map with letter as text
+                            Map<String, String> fallbackOpts = new LinkedHashMap<>();
+                            for (Object o : optList) {
+                                String letter = ((String) o).toUpperCase();
+                                fallbackOpts.put(letter, letter);
+                            }
+                            opts = fallbackOpts;
+                        }
+                    }
+                    // Also inject shared options for mcq questions that have NO options at all
+                    if ("mcq".equals(type) && opts == null && !sharedOptionsList.isEmpty()) {
+                        opts = new LinkedHashMap<>(sharedOptionsList);
+                        log.info("Exam {} – Question {} injected {} shared options for mcq",
+                                examId, question.getQuestionNumber(), sharedOptionsList.size());
+                    }
                     if (opts != null) question.setOptions(objectMapper.writeValueAsString(opts));
                 }
                 questionMapper.insert(question);
@@ -449,8 +687,13 @@ public class AsyncParseService {
             if (anyWrite) exam.setType("writing");
         }
 
+        // ── Auto-generate difficulty and tags ────────────────────────────────
+        exam.setDifficulty(assessDifficulty(exam, questions, passages));
+        exam.setTags(objectMapper.writeValueAsString(generateTags(exam, questions, passages)));
+
         examMapper.updateById(exam);
-        log.info("Exam {} committed – {} questions", examId, questions != null ? questions.size() : 0);
+        log.info("Exam {} committed – {} questions, difficulty={}, tags={}", examId,
+                questions != null ? questions.size() : 0, exam.getDifficulty(), exam.getTags());
     }
 
     @SuppressWarnings("unchecked")
@@ -544,6 +787,9 @@ public class AsyncParseService {
         String a = answer == null ? "" : answer.trim();
         if (a.isBlank()) return t;
 
+        // Skip if answer is very short (1-2 chars) — replacing single letters in text corrupts words
+        if (a.length() <= 2) return t;
+
         // Replace first exact occurrence (case-insensitive) of answer with blank
         Pattern p = Pattern.compile(Pattern.quote(a), Pattern.CASE_INSENSITIVE);
         Matcher m = p.matcher(t);
@@ -618,8 +864,255 @@ public class AsyncParseService {
         return -1;
     }
 
+    // ── Shared options extraction ──────────────────────────────────────────────
+
+    /**
+     * Scans passages for a shared options list like:
+     *   A  There is a complicated combination of reasons...
+     *   B  The rainforests are being destroyed...
+     *   ...
+     *   P  Humans depend on the rainforests...
+     * Returns a map of {"A": "...", "B": "...", ...} or empty if not found.
+     */
+    // Matches lines like: "A  There is a complicated..." or "A. There is..." or "A) There is..."
+    private static final Pattern OPTION_LINE = Pattern.compile(
+            "^\\s*([A-Z])[.)\\s]\\s*([A-Z].{5,})$", Pattern.MULTILINE);
+
+    // Matches references in explanations like: "Option E: 'Without rainforests...'", "response E", "statement E" etc.
+    private static final Pattern EXPLANATION_OPTION_REF = Pattern.compile(
+            "(?:Option|response|answer|statement)\\s+([A-Z])(?:\\s+is|[:\\s,])\\s*['\"]([^'\"]{5,}?)['\"]", Pattern.CASE_INSENSITIVE);
+
+    private Map<String, String> extractSharedOptionsFromText(List<String> texts) {
+        if (texts == null || texts.isEmpty()) return Map.of();
+        Map<String, String> opts = new LinkedHashMap<>();
+        for (String text : texts) {
+            if (text == null) continue;
+            Matcher m = OPTION_LINE.matcher(text);
+            while (m.find()) {
+                opts.put(m.group(1), m.group(2).trim());
+            }
+        }
+        // Only consider valid if we found at least 4 options starting from A
+        if (opts.size() >= 4 && opts.containsKey("A")) {
+            return opts;
+        }
+        return Map.of();
+    }
+
+    /**
+     * Extract shared options from question explanations.
+     * AI often writes "Option E: 'Without rainforests...'" in the explanation.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, String> extractSharedOptionsFromQuestions(List<Map<String, Object>> questions) {
+        if (questions == null) return Map.of();
+        Map<String, String> opts = new LinkedHashMap<>();
+        for (Map<String, Object> q : questions) {
+            // Scan explanation for option references
+            String explanation = String.valueOf(q.getOrDefault("explanation", ""));
+            Matcher m = EXPLANATION_OPTION_REF.matcher(explanation);
+            while (m.find()) {
+                opts.put(m.group(1), m.group(2).trim());
+            }
+            // Also scan question text for option lines (A-P style lines sometimes end up in text)
+            String text = String.valueOf(q.getOrDefault("text", ""));
+            Matcher tm = OPTION_LINE.matcher(text);
+            while (tm.find()) {
+                opts.putIfAbsent(tm.group(1), tm.group(2).trim());
+            }
+        }
+        if (opts.size() >= 3) return opts;
+        return Map.of();
+    }
+
     private void markError(Long examId) {
         Exam exam = examMapper.selectById(examId);
         if (exam != null) { exam.setStatus("error"); examMapper.updateById(exam); }
+    }
+
+    // ── Difficulty assessment ──────────────────────────────────────────────────
+
+    /**
+     * Assess exam difficulty on a 1-5 scale based on question types, count, and passage complexity.
+     * Returns a Chinese label: 入门(1), 简单(2), 中等(3), 较难(4), 困难(5)
+     */
+    @SuppressWarnings("unchecked")
+    private String assessDifficulty(Exam exam, List<Map<String, Object>> questions, List<String> passages) {
+        if (questions == null || questions.isEmpty()) return "中等";
+
+        int score = 0;
+        int count = questions.size();
+
+        // Factor 1: question count
+        if (count <= 5) score += 1;
+        else if (count <= 13) score += 2;
+        else if (count <= 27) score += 3;
+        else if (count <= 40) score += 4;
+        else score += 5;
+
+        // Factor 2: question type complexity
+        long tfngCount = questions.stream().filter(q -> "tfng".equals(q.get("type"))).count();
+        long mcqCount = questions.stream().filter(q -> "mcq".equals(q.get("type"))).count();
+        long fillCount = questions.stream().filter(q -> "fill".equals(q.get("type"))).count();
+        long writeCount = questions.stream().filter(q -> "write".equals(q.get("type"))).count();
+
+        // Writing tasks are inherently harder
+        if (writeCount > 0) {
+            boolean hasTask2 = questions.stream().anyMatch(q ->
+                    "Task2".equals(q.get("taskType")) || "task2".equalsIgnoreCase(String.valueOf(q.get("taskType"))));
+            score += hasTask2 ? 4 : 3;
+        } else {
+            // Fill-in-blank > TFNG > MCQ in difficulty
+            double typeDiff = (fillCount * 3.0 + tfngCount * 2.5 + mcqCount * 1.5) / Math.max(count, 1);
+            score += (int) Math.round(typeDiff);
+        }
+
+        // Factor 3: passage length (longer = harder)
+        if (passages != null && !passages.isEmpty()) {
+            int totalLen = passages.stream().mapToInt(String::length).sum();
+            if (totalLen > 5000) score += 2;
+            else if (totalLen > 2000) score += 1;
+        }
+
+        // Normalize to 1-5 scale (score range: roughly 2-12)
+        int level;
+        if (score <= 3) level = 1;
+        else if (score <= 5) level = 2;
+        else if (score <= 7) level = 3;
+        else if (score <= 9) level = 4;
+        else level = 5;
+
+        return switch (level) {
+            case 1 -> "入门";
+            case 2 -> "简单";
+            case 3 -> "中等";
+            case 4 -> "较难";
+            case 5 -> "困难";
+            default -> "中等";
+        };
+    }
+
+    // ── Tag generation ────────────────────────────────────────────────────────
+
+    /**
+     * Generate tags based on exam type, title, and question content.
+     * Includes: type label, Academic/General, Task 1/Task 2, Cambridge source, etc.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> generateTags(Exam exam, List<Map<String, Object>> questions, List<String> passages) {
+        List<String> tags = new ArrayList<>();
+        String type = exam.getType() != null ? exam.getType().toLowerCase() : "reading";
+        String title = exam.getTitle() != null ? exam.getTitle().toLowerCase() : "";
+        String combinedPassage = passages != null ? String.join(" ", passages).toLowerCase() : "";
+
+        // Tag 1: Exam type
+        switch (type) {
+            case "writing" -> tags.add("Writing");
+            case "listening" -> tags.add("Listening");
+            default -> tags.add("Reading");
+        }
+
+        // Tag 2: Academic vs General Training
+        if (title.contains("general") || combinedPassage.contains("general training")) {
+            tags.add("General");
+        } else {
+            tags.add("Academic");
+        }
+
+        // Tag 3: Writing Task 1 / Task 2
+        if ("writing".equals(type) && questions != null) {
+            boolean hasTask1 = false, hasTask2 = false;
+            for (Map<String, Object> q : questions) {
+                String taskType = String.valueOf(q.getOrDefault("taskType", ""));
+                if ("Task1".equalsIgnoreCase(taskType)) hasTask1 = true;
+                if ("Task2".equalsIgnoreCase(taskType)) hasTask2 = true;
+            }
+            // Also check passage content and title
+            if (!hasTask1 && (title.contains("task 1") || combinedPassage.contains("task 1"))) hasTask1 = true;
+            if (!hasTask2 && (title.contains("task 2") || combinedPassage.contains("task 2"))) hasTask2 = true;
+            // Default to Task 2 if neither detected
+            if (!hasTask1 && !hasTask2) hasTask2 = true;
+
+            if (hasTask1) tags.add("Task 1");
+            if (hasTask2) tags.add("Task 2");
+        }
+
+        // Tag 4: Cambridge source detection
+        if (title.matches(".*cambridge.*ielts.*\\d+.*") || title.matches(".*剑\\d+.*") || title.matches(".*剑桥.*\\d+.*")) {
+            tags.add("真题");
+        }
+
+        return tags;
+    }
+
+    /**
+     * Extract the reading passage from raw text by stripping question sections.
+     * Looks for where questions start (e.g. "Questions 1-8", numbered items like "1  The plight...")
+     * and returns everything before that as the passage.
+     */
+    private String extractPassageFromRawText(String rawText) {
+        if (rawText == null || rawText.isBlank()) return null;
+
+        // Try to find where questions start
+        Pattern questionsStart = Pattern.compile(
+                "(?im)^\\s*(?:Questions?\\s+\\d+|\\d{1,2}\\s+(?:TRUE|FALSE|NOT GIVEN|YES|NO|The |What |Which |How |Why |Where |Who ))");
+        Matcher m = questionsStart.matcher(rawText);
+        if (m.find() && m.start() > 200) {
+            String passage = rawText.substring(0, m.start()).trim();
+            // Also strip section headers like "Reading Passage 1"
+            passage = passage.replaceAll("(?i)^\\s*(Reading Passage \\d+|Section \\d+|Part \\d+)\\s*\\n?", "").trim();
+            if (passage.length() > 200) {
+                return passage;
+            }
+        }
+
+        // Fallback: look for option list start (A  text\nB  text) or numbered question patterns
+        Pattern optionListStart = Pattern.compile("^[A-P]\\s{2,}\\S", Pattern.MULTILINE);
+        Matcher m2 = optionListStart.matcher(rawText);
+        if (m2.find() && m2.start() > 200) {
+            return rawText.substring(0, m2.start()).trim();
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse a multi-line string of options in "A: text\nB: text\n..." or "A  text\nB  text\n..." format
+     * into a map of letter -> description text.
+     */
+    private Map<String, String> parseOptionsTextToMap(String text) {
+        Map<String, String> options = new LinkedHashMap<>();
+        if (text == null || text.isBlank()) return options;
+
+        String[] lines = text.split("\\n");
+        String currentLetter = null;
+        StringBuilder currentText = new StringBuilder();
+
+        Pattern pattern = Pattern.compile("^([A-P])[:：]\\s*(.+)$");
+        Pattern pattern2 = Pattern.compile("^([A-P])\\s{2,}(.+)$");
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            Matcher m = pattern.matcher(trimmed);
+            if (!m.matches()) m = pattern2.matcher(trimmed);
+            if (m.matches()) {
+                if (currentLetter != null) {
+                    options.put(currentLetter, currentText.toString().trim());
+                }
+                currentLetter = m.group(1);
+                currentText = new StringBuilder(m.group(2));
+            } else if (currentLetter != null && !trimmed.isEmpty()
+                    && !trimmed.matches("^\\d+\\s+.*")
+                    && !trimmed.matches("^(?i)questions?\\s+.*")) {
+                currentText.append(" ").append(trimmed);
+            } else if (currentLetter != null) {
+                options.put(currentLetter, currentText.toString().trim());
+                currentLetter = null;
+            }
+        }
+        if (currentLetter != null) {
+            options.put(currentLetter, currentText.toString().trim());
+        }
+        return options.size() >= 2 ? options : new LinkedHashMap<>();
     }
 }

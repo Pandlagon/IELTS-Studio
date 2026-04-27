@@ -10,11 +10,118 @@
             <h1 class="page-title">模拟考试</h1>
             <p class="page-sub">管理您的试卷，开始模拟练习</p>
           </div>
-          <button class="btn-primary" @click="showUpload = true">
-            <el-icon><Plus /></el-icon>
-            上传试卷
-          </button>
+          <div class="header-actions">
+            <button class="btn-secondary" @click="showCreateCollection = true">
+              <el-icon><FolderAdd /></el-icon>
+              新建试卷集
+            </button>
+            <button class="btn-primary" @click="showUpload = true">
+              <el-icon><Plus /></el-icon>
+              上传试卷
+            </button>
+          </div>
         </div>
+
+        <!-- Collections Section -->
+        <div v-if="collections.length > 0" class="collections-section">
+          <h2 class="section-title">📁 试卷集</h2>
+          <div class="collection-grid">
+            <div v-for="col in collections" :key="col.id" class="collection-card card">
+              <div class="collection-card-header">
+                <div class="collection-icon">📂</div>
+                <button class="btn-icon-delete" title="删除试卷集" @click.stop="confirmDeleteCollection(col.id)">
+                  <el-icon><Delete /></el-icon>
+                </button>
+              </div>
+              <h3 class="collection-title">{{ col.title }}</h3>
+              <p class="collection-desc">{{ col.description || '暂无描述' }}</p>
+              <div class="collection-meta">
+                <span class="meta-item">📄 {{ col.examCount || 0 }} 套试卷</span>
+              </div>
+              <div class="collection-card-footer">
+                <button class="btn-secondary btn-sm" @click="openCollectionDetail(col.id)">
+                  管理
+                </button>
+                <button class="btn-primary btn-sm" :disabled="!col.examCount" @click="startCollection(col.id)">
+                  开始答题
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Create Collection Dialog -->
+        <transition name="fade-in-up">
+          <div v-if="showCreateCollection" class="upload-panel card">
+            <div class="upload-panel-header">
+              <h3>新建试卷集</h3>
+              <button class="close-btn" @click="showCreateCollection = false">
+                <el-icon><Close /></el-icon>
+              </button>
+            </div>
+            <div class="upload-meta" style="grid-template-columns: 1fr">
+              <div class="form-group">
+                <label class="form-label">试卷集名称</label>
+                <input v-model="collectionForm.title" class="form-input" placeholder="例：Cambridge IELTS 18 全套" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">描述 <span class="form-optional">（选填）</span></label>
+                <input v-model="collectionForm.description" class="form-input" placeholder="例：包含 3 篇阅读和 2 篇写作" />
+              </div>
+            </div>
+            <div class="upload-actions">
+              <button class="btn-secondary" @click="showCreateCollection = false">取消</button>
+              <button class="btn-primary" :disabled="!collectionForm.title.trim()" @click="createCollection">创建</button>
+            </div>
+          </div>
+        </transition>
+
+        <!-- Collection Detail Dialog -->
+        <transition name="fade-in-up">
+          <div v-if="showCollectionDetail" class="upload-panel card collection-detail-panel">
+            <div class="upload-panel-header">
+              <h3>{{ currentCollection?.title }} — 管理试卷</h3>
+              <button class="close-btn" @click="showCollectionDetail = false">
+                <el-icon><Close /></el-icon>
+              </button>
+            </div>
+
+            <!-- Current items in collection -->
+            <div class="collection-items-list">
+              <div v-if="collectionItems.length === 0" class="empty-collection-hint">
+                暂无试卷，请从下方添加
+              </div>
+              <div v-for="(item, idx) in collectionItems" :key="item.id" class="collection-item">
+                <span class="item-order">{{ idx + 1 }}</span>
+                <div class="item-info">
+                  <span class="item-title">{{ item.examTitle }}</span>
+                  <span class="item-meta">
+                    <span class="exam-type-badge" :class="`type-${item.examType}`" style="font-size:10px;padding:1px 6px">{{ typeLabel(item.examType) }}</span>
+                    {{ item.questionCount || 0 }} 题
+                  </span>
+                </div>
+                <button class="btn-icon-delete" style="width:28px;height:28px" @click="removeFromCollection(item.examId)">
+                  <el-icon><Close /></el-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- Add exams picker -->
+            <div class="add-exam-section">
+              <h4 class="add-exam-title">添加试卷</h4>
+              <div class="add-exam-list">
+                <div v-for="exam in availableExamsForCollection" :key="exam.id" class="add-exam-row" @click="addToCollection(exam.id)">
+                  <span class="exam-type-badge" :class="`type-${exam.type}`" style="font-size:10px;padding:1px 6px">{{ typeLabel(exam.type) }}</span>
+                  <span class="add-exam-name">{{ exam.title }}</span>
+                  <span class="add-exam-plus">+</span>
+                </div>
+                <div v-if="availableExamsForCollection.length === 0" class="empty-collection-hint">
+                  所有试卷已添加或暂无可用试卷
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
 
         <!-- Upload Panel -->
         <transition name="fade-in-up">
@@ -60,6 +167,10 @@
               <div class="form-group">
                 <label class="form-label">试卷名称</label>
                 <input v-model="uploadForm.title" class="form-input" placeholder="例：Cambridge IELTS 18 Test 1" />
+              </div>
+              <div class="form-group full-width">
+                <label class="form-label">试卷描述 <span class="form-optional">（选填）</span></label>
+                <input v-model="uploadForm.description" class="form-input" placeholder="例：Academic Reading - The development of the London underground railway" />
               </div>
               <div class="form-group">
                 <label class="form-label">题型</label>
@@ -234,7 +345,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import NavBar from '@/components/NavBar.vue'
@@ -261,7 +372,7 @@ const uploadFiles = ref([])
 const searchQ = ref('')
 const activeTab = ref('all')
 
-const uploadForm = ref({ title: '', type: 'reading', duration: 60, parsePrecise: false })
+const uploadForm = ref({ title: '', type: 'reading', duration: 60, description: '', parsePrecise: false })
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -348,6 +459,7 @@ async function handleUpload() {
     fd.append('title', uploadForm.value.title)
     fd.append('type', uploadForm.value.type)
     fd.append('duration', String(uploadForm.value.duration || 60))
+    if (uploadForm.value.description) fd.append('description', uploadForm.value.description)
     fd.append('parsePrecise', String(uploadForm.value.parsePrecise || false))
 
     // For non-precise PDF uploads: extract text client-side with pdf.js
@@ -383,14 +495,14 @@ async function handleUpload() {
     examStore.addPendingExam(examId, uploadForm.value.title, uploadForm.value.type, uploadForm.value.duration || 60)
     showUpload.value = false
     uploadFiles.value = []
-    uploadForm.value = { title: '', type: 'reading', duration: 60, parsePrecise: false }
+    uploadForm.value = { title: '', type: 'reading', duration: 60, description: '', parsePrecise: false }
     ElMessage.success('上传成功，正在后台解析，请稍候...')
     pollExamStatus(examId)
   } catch (e) {
     ElMessage.warning('后端连接失败，已使用本地模式添加试卷')
     examStore.addExam({
       title: uploadForm.value.title,
-      description: `${typeLabel(uploadForm.value.type)} - 上传于 ${new Date().toLocaleDateString()}`,
+      description: uploadForm.value.description || `${typeLabel(uploadForm.value.type)} - 上传于 ${new Date().toLocaleDateString()}`,
       type: uploadForm.value.type,
       questionCount: 0,
       duration: uploadForm.value.duration || 60,
@@ -399,7 +511,7 @@ async function handleUpload() {
     })
     showUpload.value = false
     uploadFiles.value = []
-    uploadForm.value = { title: '', type: 'reading', duration: 60, parsePrecise: false }
+    uploadForm.value = { title: '', type: 'reading', duration: 60, description: '', parsePrecise: false }
   } finally {
     uploading.value = false
   }
@@ -440,6 +552,87 @@ async function doDeleteExam(id) {
   await examStore.deleteExam(id)
   confirmDeleteId.value = null
   ElMessage.success('试卷已删除')
+}
+
+// ── Collection management ──────────────────────────────────────────────
+const collections = ref([])
+const showCreateCollection = ref(false)
+const showCollectionDetail = ref(false)
+const currentCollection = ref(null)
+const collectionItems = ref([])
+const collectionForm = ref({ title: '', description: '' })
+
+async function loadCollections() {
+  try {
+    const res = await request.get('/exam-collections')
+    collections.value = res.data || []
+  } catch { /* ignore */ }
+}
+
+onMounted(() => { loadCollections() })
+
+async function createCollection() {
+  if (!collectionForm.value.title.trim()) return
+  try {
+    await request.post('/exam-collections', {
+      title: collectionForm.value.title.trim(),
+      description: collectionForm.value.description
+    })
+    ElMessage.success('试卷集创建成功')
+    showCreateCollection.value = false
+    collectionForm.value = { title: '', description: '' }
+    await loadCollections()
+  } catch (e) {
+    ElMessage.error('创建失败: ' + e.message)
+  }
+}
+
+async function confirmDeleteCollection(id) {
+  try {
+    await request.delete(`/exam-collections/${id}`)
+    ElMessage.success('试卷集已删除')
+    await loadCollections()
+  } catch { ElMessage.error('删除失败') }
+}
+
+async function openCollectionDetail(id) {
+  try {
+    const res = await request.get(`/exam-collections/${id}`)
+    currentCollection.value = res.data.collection
+    collectionItems.value = res.data.items || []
+    showCollectionDetail.value = true
+  } catch { ElMessage.error('加载失败') }
+}
+
+const availableExamsForCollection = computed(() => {
+  const usedIds = new Set(collectionItems.value.map(i => i.examId))
+  return examStore.exams.filter(e => e.status === 'ready' && !e.isMock && !usedIds.has(e.id))
+})
+
+async function addToCollection(examId) {
+  if (!currentCollection.value) return
+  try {
+    await request.post(`/exam-collections/${currentCollection.value.id}/exams`, { examId })
+    await openCollectionDetail(currentCollection.value.id)
+    await loadCollections()
+    ElMessage.success('已添加')
+  } catch (e) {
+    ElMessage.warning(e.message || '添加失败')
+  }
+}
+
+async function removeFromCollection(examId) {
+  if (!currentCollection.value) return
+  try {
+    await request.delete(`/exam-collections/${currentCollection.value.id}/exams/${examId}`)
+    await openCollectionDetail(currentCollection.value.id)
+    await loadCollections()
+    ElMessage.success('已移除')
+  } catch { ElMessage.error('移除失败') }
+}
+
+function startCollection(id) {
+  router.push(`/collection/${id}`)
 }
 </script>
 
@@ -654,6 +847,8 @@ async function doDeleteExam(id) {
   gap: 16px;
   margin-bottom: 20px;
 }
+.upload-meta .full-width { grid-column: 1 / -1; }
+.form-optional { font-weight: 400; color: var(--text-muted); font-size: 12px; }
 
 .upload-tip {
   font-size: 12px;
@@ -873,9 +1068,11 @@ async function doDeleteExam(id) {
 }
 
 .difficulty { font-weight: 600; }
+.diff-入门 { color: #06B6D4; }
 .diff-简单 { color: #22C55E; }
 .diff-中等 { color: #F59E0B; }
 .diff-较难 { color: #EF4444; }
+.diff-困难 { color: #9333EA; }
 
 .exam-tags {
   display: flex;
@@ -941,13 +1138,50 @@ async function doDeleteExam(id) {
 .empty-title { font-size: 18px; font-weight: 700; color: var(--text-primary); }
 .empty-desc { font-size: 14px; color: var(--text-muted); margin-bottom: 8px; }
 
-@media (max-width: 1024px) {
-  .exam-grid { grid-template-columns: repeat(2, 1fr); }
-}
+/* Header actions */
+.header-actions { display: flex; gap: 10px; }
 
+/* Collections */
+.collections-section { margin-bottom: 32px; }
+.section-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 16px; }
+.collection-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.collection-card { padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+.collection-card-header { display: flex; justify-content: space-between; align-items: center; }
+.collection-icon { font-size: 28px; }
+.collection-title { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.collection-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.collection-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.collection-card-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border-light); }
+.btn-sm { padding: 5px 14px; font-size: 12px; }
+
+/* Collection detail panel */
+.collection-detail-panel { max-height: 70vh; overflow-y: auto; }
+.collection-items-list { margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; }
+.collection-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border-light); }
+.collection-item:last-child { border-bottom: none; }
+.item-order { font-size: 13px; font-weight: 700; color: var(--color-primary); width: 24px; text-align: center; flex-shrink: 0; }
+.item-info { flex: 1; min-width: 0; }
+.item-title { font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-meta { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.empty-collection-hint { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+.add-exam-section { border-top: 1px solid var(--border-color); padding-top: 16px; }
+.add-exam-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
+.add-exam-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.add-exam-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; transition: background 0.1s; border-bottom: 1px solid var(--border-light); }
+.add-exam-row:last-child { border-bottom: none; }
+.add-exam-row:hover { background: rgba(27, 67, 50, 0.04); }
+.add-exam-name { flex: 1; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.add-exam-plus { font-size: 18px; font-weight: 700; color: var(--color-primary); flex-shrink: 0; }
+
+@media (max-width: 1024px) {
+  .collection-grid { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 768px) {
   .exam-grid { grid-template-columns: 1fr; }
+  .collection-grid { grid-template-columns: 1fr; }
   .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .header-actions { width: 100%; }
   .filter-bar { flex-direction: column; align-items: flex-start; }
   .search-box { width: 100%; }
   .upload-meta { grid-template-columns: 1fr; }

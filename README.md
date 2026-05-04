@@ -404,4 +404,6 @@ mvn clean package         # 打包为 jar
 
 ## License
 
-本项目采用 MIT 许可证，仅供学习与个人使用。
+本项目仅供学习与个人开发使用，请勿用于商业目的。
+# IELTS-Studio
+

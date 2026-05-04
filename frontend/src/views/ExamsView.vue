@@ -62,7 +62,8 @@
             <div class="upload-meta" style="grid-template-columns: 1fr">
               <div class="form-group">
                 <label class="form-label">试卷集名称</label>
-                <input v-model="collectionForm.title" class="form-input" placeholder="例：Cambridge IELTS 18 全套" />
+                <input v-model="collectionForm.title" class="form-input" :class="{ 'input-error': collectionTitleDup }" placeholder="例：Cambridge IELTS 18 全套" @input="collectionTitleDup = false" />
+                <span v-if="collectionTitleDup" class="field-error">已存在同名试卷集，请更换名称</span>
               </div>
               <div class="form-group">
                 <label class="form-label">描述 <span class="form-optional">（选填）</span></label>
@@ -100,6 +101,14 @@
                     {{ item.questionCount || 0 }} 题
                   </span>
                 </div>
+                <div class="item-reorder-btns">
+                  <button class="reorder-btn" :disabled="idx === 0" @click="moveItem(idx, -1)" title="上移">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                  </button>
+                  <button class="reorder-btn" :disabled="idx === collectionItems.length - 1" @click="moveItem(idx, 1)" title="下移">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                </div>
                 <button class="btn-icon-delete" style="width:28px;height:28px" @click="removeFromCollection(item.examId)">
                   <el-icon><Close /></el-icon>
                 </button>
@@ -109,14 +118,15 @@
             <!-- Add exams picker -->
             <div class="add-exam-section">
               <h4 class="add-exam-title">添加试卷</h4>
+              <input v-model="addExamSearch" class="form-input add-exam-search" placeholder="搜索试卷名称..." />
               <div class="add-exam-list">
-                <div v-for="exam in availableExamsForCollection" :key="exam.id" class="add-exam-row" @click="addToCollection(exam.id)">
+                <div v-for="exam in filteredAvailableExams" :key="exam.id" class="add-exam-row" @click="addToCollection(exam.id)">
                   <span class="exam-type-badge" :class="`type-${exam.type}`" style="font-size:10px;padding:1px 6px">{{ typeLabel(exam.type) }}</span>
                   <span class="add-exam-name">{{ exam.title }}</span>
                   <span class="add-exam-plus">+</span>
                 </div>
-                <div v-if="availableExamsForCollection.length === 0" class="empty-collection-hint">
-                  所有试卷已添加或暂无可用试卷
+                <div v-if="filteredAvailableExams.length === 0" class="empty-collection-hint">
+                  {{ addExamSearch.trim() ? '未找到匹配的试卷' : '所有试卷已添加或暂无可用试卷' }}
                 </div>
               </div>
             </div>
@@ -166,7 +176,8 @@
             <div class="upload-meta">
               <div class="form-group">
                 <label class="form-label">试卷名称</label>
-                <input v-model="uploadForm.title" class="form-input" placeholder="例：Cambridge IELTS 18 Test 1" />
+                <input v-model="uploadForm.title" class="form-input" :class="{ 'input-error': uploadTitleDup }" placeholder="例：Cambridge IELTS 18 Test 1" @input="uploadTitleDup = false" />
+                <span v-if="uploadTitleDup" class="field-error">已存在同名试卷，请更换名称</span>
               </div>
               <div class="form-group full-width">
                 <label class="form-label">试卷描述 <span class="form-optional">（选填）</span></label>
@@ -373,6 +384,8 @@ const searchQ = ref('')
 const activeTab = ref('all')
 
 const uploadForm = ref({ title: '', type: 'reading', duration: 60, description: '', parsePrecise: false })
+const uploadTitleDup = ref(false)
+const collectionTitleDup = ref(false)
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -441,6 +454,15 @@ const totalUploadBytes = computed(() => uploadFiles.value.reduce((sum, f) => sum
 
 async function handleUpload() {
   if (!uploadFiles.value.length || !uploadForm.value.title) return
+  // 前端同名检查
+  const trimTitle = uploadForm.value.title.trim()
+  const dup = examStore.exams.some(e => e.title === trimTitle)
+  if (dup) {
+    uploadTitleDup.value = true
+    return
+  }
+  uploadTitleDup.value = false
+
   const names = uploadFiles.value.map(f => (f?.name || '').toLowerCase())
   const isAllImages = names.every(n => /\.(png|jpg|jpeg|webp)$/i.test(n))
   const isSingleNonImage = uploadFiles.value.length === 1 && !isAllImages
@@ -456,7 +478,7 @@ async function handleUpload() {
     } else {
       fd.append('file', uploadFiles.value[0])
     }
-    fd.append('title', uploadForm.value.title)
+    fd.append('title', trimTitle)
     fd.append('type', uploadForm.value.type)
     fd.append('duration', String(uploadForm.value.duration || 60))
     if (uploadForm.value.description) fd.append('description', uploadForm.value.description)
@@ -499,19 +521,12 @@ async function handleUpload() {
     ElMessage.success('上传成功，正在后台解析，请稍候...')
     pollExamStatus(examId)
   } catch (e) {
-    ElMessage.warning('后端连接失败，已使用本地模式添加试卷')
-    examStore.addExam({
-      title: uploadForm.value.title,
-      description: uploadForm.value.description || `${typeLabel(uploadForm.value.type)} - 上传于 ${new Date().toLocaleDateString()}`,
-      type: uploadForm.value.type,
-      questionCount: 0,
-      duration: uploadForm.value.duration || 60,
-      difficulty: '中等',
-      tags: [typeLabel(uploadForm.value.type)],
-    })
-    showUpload.value = false
-    uploadFiles.value = []
-    uploadForm.value = { title: '', type: 'reading', duration: 60, description: '', parsePrecise: false }
+    const msg = e?.message || '上传失败'
+    if (msg.includes('同名')) {
+      uploadTitleDup.value = true
+    } else {
+      ElMessage.error(msg)
+    }
   } finally {
     uploading.value = false
   }
@@ -573,9 +588,17 @@ onMounted(() => { loadCollections() })
 
 async function createCollection() {
   if (!collectionForm.value.title.trim()) return
+  // 前端同名检查
+  const trimTitle = collectionForm.value.title.trim()
+  const dup = collections.value.some(c => c.title === trimTitle)
+  if (dup) {
+    collectionTitleDup.value = true
+    return
+  }
+  collectionTitleDup.value = false
   try {
     await request.post('/exam-collections', {
-      title: collectionForm.value.title.trim(),
+      title: trimTitle,
       description: collectionForm.value.description
     })
     ElMessage.success('试卷集创建成功')
@@ -583,7 +606,12 @@ async function createCollection() {
     collectionForm.value = { title: '', description: '' }
     await loadCollections()
   } catch (e) {
-    ElMessage.error('创建失败: ' + e.message)
+    const msg = e?.message || '创建失败'
+    if (msg.includes('同名')) {
+      collectionTitleDup.value = true
+    } else {
+      ElMessage.error('创建失败: ' + msg)
+    }
   }
 }
 
@@ -600,13 +628,22 @@ async function openCollectionDetail(id) {
     const res = await request.get(`/exam-collections/${id}`)
     currentCollection.value = res.data.collection
     collectionItems.value = res.data.items || []
+    addExamSearch.value = ''
     showCollectionDetail.value = true
   } catch { ElMessage.error('加载失败') }
 }
 
+const addExamSearch = ref('')
+
 const availableExamsForCollection = computed(() => {
   const usedIds = new Set(collectionItems.value.map(i => i.examId))
   return examStore.exams.filter(e => e.status === 'ready' && !e.isMock && !usedIds.has(e.id))
+})
+
+const filteredAvailableExams = computed(() => {
+  const q = addExamSearch.value.trim().toLowerCase()
+  if (!q) return availableExamsForCollection.value
+  return availableExamsForCollection.value.filter(e => e.title.toLowerCase().includes(q))
 })
 
 async function addToCollection(examId) {
@@ -618,6 +655,24 @@ async function addToCollection(examId) {
     ElMessage.success('已添加')
   } catch (e) {
     ElMessage.warning(e.message || '添加失败')
+  }
+}
+
+async function moveItem(idx, dir) {
+  const target = idx + dir
+  if (target < 0 || target >= collectionItems.value.length) return
+  const items = [...collectionItems.value]
+  const temp = items[idx]
+  items[idx] = items[target]
+  items[target] = temp
+  collectionItems.value = items
+  try {
+    await request.put(`/exam-collections/${currentCollection.value.id}/reorder`, {
+      examIds: items.map(i => i.examId)
+    })
+  } catch {
+    ElMessage.error('排序失败')
+    await openCollectionDetail(currentCollection.value.id)
   }
 }
 
@@ -865,6 +920,17 @@ function startCollection(id) {
   margin-top: 4px;
   font-size: 12px;
   color: #B45309;
+}
+.input-error {
+  border-color: #EF4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+.field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #EF4444;
+  font-weight: 500;
 }
 
 .parse-mode-label {
@@ -1163,10 +1229,34 @@ function startCollection(id) {
 .item-info { flex: 1; min-width: 0; }
 .item-title { font-size: 13px; font-weight: 600; color: var(--text-primary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-meta { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.item-reorder-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.reorder-btn {
+  width: 22px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  padding: 0;
+}
+.reorder-btn:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); background: #F0F7F4; }
+.reorder-btn:disabled { opacity: 0.25; cursor: default; }
+
 .empty-collection-hint { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
 .add-exam-section { border-top: 1px solid var(--border-color); padding-top: 16px; }
 .add-exam-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
+.add-exam-search { margin-bottom: 10px; padding: 8px 12px; font-size: 13px; }
 .add-exam-list { max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
 .add-exam-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; transition: background 0.1s; border-bottom: 1px solid var(--border-light); }
 .add-exam-row:last-child { border-bottom: none; }

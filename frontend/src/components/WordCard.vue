@@ -1,6 +1,9 @@
 <template>
   <div class="word-card" :class="{ 'is-flipping': flipping }">
-    <div class="phonetic">{{ word.phonetic }}</div>
+    <div class="phonetic">
+      {{ word.phonetic }}
+      <button class="play-btn" @click.stop="playWord(word.word)" title="播放发音">🔊</button>
+    </div>
     <div class="word-text">{{ word.word }}</div>
     <div v-if="!hasPosGroups && !meaningRevealed" class="pos-badge" :class="`pos-${word.posType}`">{{ word.pos }}</div>
     
@@ -42,6 +45,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { playWord } from '@/utils/playWord'
 
 const props = defineProps({
   word: {
@@ -87,6 +91,7 @@ watch(() => props.word?.id, () => {
   shownAt.value = Date.now()
   meaningRevealed.value = false
   userChoice.value = null
+  if (props.word?.word) playWord(props.word.word)
 }, { immediate: true })
 
 function animate(cb) {
@@ -100,6 +105,7 @@ function animate(cb) {
 function revealMeaning(choice) {
   userChoice.value = choice
   meaningRevealed.value = true
+  if (props.word?.word) playWord(props.word.word)
 }
 
 function confirmAndNext() {
@@ -182,6 +188,25 @@ onUnmounted(() => {
   font-style: italic;
   margin-bottom: 8px;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.play-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s, transform 0.15s;
+  line-height: 1;
+}
+.play-btn:hover {
+  opacity: 1;
+  transform: scale(1.15);
 }
 
 .word-text {
@@ -303,39 +328,47 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   font-size: 13px;
   font-weight: 600;
-  border: none;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font-sans);
 }
 
 .btn-unknown {
-  background: #FFEBEE;
-  color: #C62828;
+  background: transparent;
+  color: #DC2626;
+  border: 1.5px solid #FECACA;
 }
 
 .btn-unknown:hover {
-  background: #FFCDD2;
+  background: #DC2626;
+  color: #fff;
+  border-color: #DC2626;
   transform: translateY(-1px);
 }
 
 .btn-know {
-  background: #E8F5E9;
-  color: #2E7D32;
+  background: transparent;
+  color: #16A34A;
+  border: 1.5px solid #BBF7D0;
 }
 
 .btn-know:hover {
-  background: #C8E6C9;
+  background: #16A34A;
+  color: #fff;
+  border-color: #16A34A;
   transform: translateY(-1px);
 }
 
 .btn-next {
-  background: #E3F2FD;
-  color: #1565C0;
+  background: transparent;
+  color: #2563EB;
+  border: 1.5px solid #BFDBFE;
 }
 
 .btn-next:hover {
-  background: #BBDEFB;
+  background: #2563EB;
+  color: #fff;
+  border-color: #2563EB;
   transform: translateY(-1px);
 }
 

@@ -58,7 +58,10 @@ public class AiParseService {
               - 【重要】若文本中存在 "Answers"/"Answer Key"/"参考答案" 等答案区块：
                 * passages 中不要包含该答案区块
                 * questions 中的 answer 可以使用答案区块给出的答案，但不要把答案区块当作题干或正文
-              - WRITING：写作任务的题干文本（每个任务一个条目）
+              - WRITING：写作任务的【完整原文】（每个任务一个条目），必须逐字包含原文中的所有内容：
+                标题（如 "WRITING TASK 2"）、时间提示（如 "You should spend about 40 minutes..."）、
+                话题引导（如 "Write about the following topic:"）、题目正文、要求说明（如 "Give reasons..."）、
+                字数要求（如 "Write at least 250 words."）。不得省略、摘要或改写任何原文文字。
               - LISTENING：听力 transcript；若未提供则返回空数组
 
             "questions"：问题对象数组。不同题型字段不同：
@@ -78,13 +81,13 @@ public class AiParseService {
               ── 写作题型 ───────────────────────────────────────────────
               type "write" → IELTS Writing Task 1 或 Task 2
                 字段：questionNumber, type,
-                      text（完整题目提示，包含任何数据描述/指令文字）, 
+                      text（与 passages 内容相同，即写作任务的【完整原文】，不得省略），
                       taskType（"Task1" 或 "Task2"）, 
                       answer（仅输出“写作思路与要点”，不要写范文；列出需要覆盖的关键点、建议结构、以及 2-3 个应使用的关键词/短语；
                             总字数控制在 60 词以内）, 
                       explanation（Band 7+ 的评分要点提示：task achievement、coherence、vocabulary、grammar）, 
                       locatorText（题目要求中的关键短语，例如 "summarise the information"）, 
-                      wordLimit（整数：Task1=150，Task2=250）
+                      wordLimit（整数，从原文提取字数要求；若原文说 "80-100 words" 则为 80；若未明确则 Task1=150，Task2=250）
 
               ── 听力题型 ─────────────────────────────────────────────
               与阅读相同（tfng / mcq / fill）；locatorText：若有 transcript 则取相关原文短语，
@@ -101,8 +104,9 @@ public class AiParseService {
 
             输出示例结构：
             Reading:  {"questionNumber":1,"type":"tfng","text":"…","answer":"TRUE","explanation":"…","locatorText":"…"}
-            Writing:  {"questionNumber":1,"type":"write","text":"…","taskType":"Task2","answer":"…","explanation":"…","locatorText":"…","wordLimit":250}
+            Writing:  {"questionNumber":1,"type":"write","text":"WRITING TASK 2\nYou should spend about 40 minutes on this task.\nWrite about the following topic:\n…\nWrite at least 250 words.","taskType":"Task2","answer":"写作思路：1) 明确立场 2) 分析两个关键因素并举例 3) 让步段承认反面观点 4) 总结重申。关键词：subjective, well-being, contribute to","explanation":"Task Achievement: 覆盖所有论点并给出立场。Coherence: 逻辑清晰使用连接词。Vocabulary: 使用同义替换。Grammar: 句式多样。","locatorText":"factors are important in achieving","wordLimit":250}
             Listening:{"questionNumber":1,"type":"fill","text":"…","answer":"…","explanation":"…","locatorText":"…"}
+            【重要】writing 类型的 answer 必须输出"写作思路与要点"（≤60词），不得输出 "N/A" 或 "Model answer" 或完整范文。
             """;
 
     private static final String TRANSLATE_PROMPT = """
@@ -476,10 +480,16 @@ public class AiParseService {
     // ── Generic DeepSeek call helper ──────────────────────────────────────────
 
     private String callDeepSeek(String systemPrompt, String userMessage, int tokens, int timeoutSec) throws Exception {
+        return callDeepSeek(systemPrompt, userMessage, tokens, timeoutSec, true);
+    }
+
+    private String callDeepSeek(String systemPrompt, String userMessage, int tokens, int timeoutSec, boolean jsonMode) throws Exception {
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("model", model);
         requestBody.put("max_tokens", tokens);
-        requestBody.put("response_format", Map.of("type", "json_object"));
+        if (jsonMode) {
+            requestBody.put("response_format", Map.of("type", "json_object"));
+        }
         requestBody.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userMessage)
@@ -499,6 +509,56 @@ public class AiParseService {
         }
         JsonNode root = objectMapper.readTree(response.body());
         return root.path("choices").get(0).path("message").path("content").asText();
+    }
+
+    // ── Writing guidance retry (lightweight) ─────────────────────────────────
+
+    private static final String WRITING_GUIDANCE_PROMPT = """
+            你是 IELTS 写作任务（Writing Task 1/2）的写作要点生成器。
+
+            我会提供【写作题完整原文】（包含 WRITING TASK、时间提示、题目、要求、字数要求等）。
+            你必须只返回一个 JSON 对象，字段如下：
+
+            - taskType: "Task1" 或 "Task2"（从原文判断；出现 "TASK 1" → Task1，否则 Task2）
+            - wordLimit: 整数，从原文提取字数要求；若原文说 "80-100 words" 则取 80；若未明确则 Task1=150，Task2=250
+            - answer: 写作思路（中文为主，例句用英文），用换行符分段，总长 100-160 词。格式如下：
+              立场：用中文概述你的观点立场，再给 1 句英文 thesis（如 "I believe that..."）
+              段落骨架：
+              P1 引言：中文说明引言思路 + 1 句英文 topic sentence
+              P2 主体段1：中文说明论点 + 1 句英文 topic sentence
+              P3 主体段2：中文说明论点 + 1 句英文 topic sentence
+              P4 结论：中文说明总结方式
+              高分表达：3-4 个英文短语，每个后面用中文括号说明用途
+            - explanation: 评分提示（中文为主）：分别对 Task Achievement / Coherence / Vocabulary / Grammar 各给 1 句中文建议
+            - locatorText: 从原文中截取 4-8 个词的关键短语（必须是原文片段，不可为空）
+
+            规则：
+            - 禁止输出 "N/A"、"Write an essay"、"Model answer not provided"、"No article" 等无用信息。
+            - 只返回 JSON 对象本体，不要 markdown，不要额外说明。
+            """;
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> generateWritingGuidance(String fullWritingText) throws Exception {
+        if (!isConfigured()) {
+            throw new IllegalStateException("DeepSeek API key未配置");
+        }
+        if (fullWritingText == null || fullWritingText.trim().length() < 40) {
+            throw new IllegalArgumentException("writing text too short");
+        }
+        String input = fullWritingText.trim();
+        if (input.length() > 8000) {
+            input = input.substring(0, 8000) + "\n...[截断]";
+        }
+        String content = callDeepSeek(
+                WRITING_GUIDANCE_PROMPT,
+                "请基于以下写作题原文生成写作要点 JSON：\n\n" + input,
+                600,
+                60
+        );
+        if (content != null && content.startsWith("```")) {
+            content = content.replaceAll("^```[a-z]*\\n?", "").replaceAll("\\n?```$", "").trim();
+        }
+        return objectMapper.readValue(content, Map.class);
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -647,6 +707,35 @@ public class AiParseService {
         String content = message != null ? Objects.toString(message.get("content"), "") : "";
         if (content.isBlank()) throw new RuntimeException("DeepSeek 翻译结果为空");
         return objectMapper.readValue(content, Map.class);
+    }
+
+    // ── AI Chat Assistant ────────────────────────────────────────────────────
+
+    private static final String CHAT_ASSISTANT_PROMPT = """
+            你是一个 IELTS 考试 AI 助手。用户正在做一份 IELTS 试卷，会向你提问关于试卷内容、题目解法、语法、词汇等问题。
+
+            规则：
+            - 根据提供的试卷上下文（文章、题目）回答用户的问题。
+            - 用中文回答，如涉及英文原文则保留英文并加中文解释。
+            - 回答简洁有条理，必要时分点列出。
+            - 如果用户问的是某道题的答案或解题思路，给出分析过程，不要只给答案。
+            - 不要编造试卷中没有的内容。
+            """;
+
+    /**
+     * AI chat: answer user's question based on exam context.
+     * Returns plain text answer (not JSON).
+     */
+    public String chatWithContext(String examContext, String userQuestion) throws Exception {
+        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key未配置");
+        if (userQuestion == null || userQuestion.trim().isBlank()) {
+            throw new IllegalArgumentException("问题不能为空");
+        }
+        String ctx = examContext == null ? "" : examContext;
+        if (ctx.length() > 8000) ctx = ctx.substring(0, 8000) + "\n...[截断]";
+
+        String userMsg = "【试卷上下文】\n" + ctx + "\n\n【用户问题】\n" + userQuestion.trim();
+        return callDeepSeek(CHAT_ASSISTANT_PROMPT, userMsg, 1024, 60, false);
     }
 
     /**

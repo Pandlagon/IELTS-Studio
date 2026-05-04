@@ -1,3 +1,4 @@
+
 # ─────────────────────────────────────────────────────────────────────────────
 # IELTS Studio 后端配置文件
 # 敏感字段（数据库密码、API Key 等）在生产环境中请通过环境变量注入，不要明文提交到 Git
@@ -65,7 +66,7 @@ jwt:
 # 申请地址：https://platform.deepseek.com
 ai:
   deepseek:
-    api-key: #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
+    api-key:  #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
     base-url: https://api.deepseek.com
     model: deepseek-chat
     max-tokens: 16384
@@ -99,3 +100,6 @@ logging:
   level:
     com.ieltsstudio: DEBUG     # 项目自身日志：DEBUG（开发阶段）
     org.springframework.security: INFO
+
+
+

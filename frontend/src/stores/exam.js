@@ -89,10 +89,13 @@ function detectWritingTaskMeta(text, rawOptions = {}) {
 
   let wordLimit = Number.isFinite(explicitWordLimit) && explicitWordLimit > 0 ? explicitWordLimit : undefined
   if (!wordLimit) {
-    if (taskType === 'Task1') wordLimit = 150
-    else if (taskType === 'Task2') wordLimit = 250
-    else if (normalized.includes('150 words')) wordLimit = 150
-    else if (normalized.includes('250 words')) wordLimit = 250
+    // Try to extract word limit from text (e.g. "80-100 words", "at least 250 words", "about 100 words")
+    const wlMatch = normalized.match(/(\d{2,3})(?:\s*[-–—]\s*\d{2,3})?\s*words/)
+    if (wlMatch) wordLimit = parseInt(wlMatch[1], 10)
+    if (!wordLimit) {
+      if (taskType === 'Task1') wordLimit = 150
+      else if (taskType === 'Task2') wordLimit = 250
+    }
   }
 
   return {
@@ -604,6 +607,18 @@ export const useExamStore = defineStore('exam', () => {
         }
       } else {
         passage = ''
+      }
+
+      // If passages empty but a writing question exists, use its text as the passage for the left panel
+      if (!passage && questions && questions.length > 0) {
+        const writeQ = questions.find(q => q.type === 'write')
+        if (writeQ) {
+          const wText = writeQ.questionText || writeQ.text || ''
+          if (wText) {
+            passage = wText
+            console.log('[updateParsedExam] Using write question text as passage (passages was empty)')
+          }
+        }
       }
       
       // Auto-generate writing task question if questions is empty but passage contains writing task

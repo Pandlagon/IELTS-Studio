@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS questions (
     type            VARCHAR(20)  NOT NULL DEFAULT 'fill',
     question_text   TEXT         NOT NULL,
     options         JSON,
-    answer          VARCHAR(500) NOT NULL,
+    answer          TEXT         NOT NULL,
     explanation     TEXT,
     locator_text    TEXT,
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

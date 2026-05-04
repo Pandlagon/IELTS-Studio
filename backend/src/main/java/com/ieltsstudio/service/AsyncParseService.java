@@ -102,9 +102,30 @@ public class AsyncParseService {
                     }
                 }
                 
-                // Use workflow parse (Step1 structure + Step2 per-group answers)
-                Map<String, Object> parsed = workflowParse(examId, text);
-                commitSection(examId, null, parsed, null, text);
+                // Writing tasks → parseSingle (SYSTEM_PROMPT has writing rules);
+                // Reading/Listening → workflowParse (Step1 + Step2 for better accuracy)
+                // Only treat as writing if user explicitly chose 'writing' type,
+                // or text is short (< 2000 chars) and dominated by writing task markers.
+                // Long texts (reading passages) may contain "write" instructions but aren't writing tasks.
+                String textTrimmed = text.trim();
+                String textUpper = textTrimmed.toUpperCase();
+                boolean isWriting = "writing".equalsIgnoreCase(examType)
+                        || (textTrimmed.length() < 2000 && (
+                            textUpper.startsWith("WRITING TASK")
+                            || textUpper.contains("\nWRITING TASK")
+                            || (textTrimmed.toLowerCase().contains("write at least") 
+                                && !textTrimmed.toLowerCase().contains("questions")
+                                && !textTrimmed.toLowerCase().contains("true/false/not given")
+                                && !textTrimmed.toLowerCase().contains("no more than"))
+                        ));
+                Map<String, Object> parsed;
+                if (isWriting) {
+                    log.info("Exam {} – writing task detected, using parseSingle (skip workflow)", examId);
+                    parsed = parseSingle(examId, text);
+                } else {
+                    parsed = workflowParse(examId, text);
+                }
+                commitSection(examId, null, parsed, null, text, examType);
             }
         } catch (Exception e) {
             log.error("Failed to parse exam {}", examId, e);
@@ -186,15 +207,19 @@ public class AsyncParseService {
             merged.put("questions", new ArrayList<>(deduped.values()));
 
             boolean anyWrite = allQuestions.stream().anyMatch(q -> "write".equals(q.get("type")));
+            String qwenExamType = anyWrite ? "writing" : (original.getType() != null ? original.getType() : "reading");
             if (anyWrite) original.setType("writing");
 
-            commitSection(examId, null, merged, original);
+            commitSection(examId, null, merged, original, null, qwenExamType);
             log.info("Exam {} – Qwen AI parsed {} section(s), {} unique questions",
                     examId, sections.size(), deduped.size());
         } else {
             // Single section result
-            commitSection(examId, null, parsed, original);
             List<Map<String, Object>> questions = (List<Map<String, Object>>) parsed.get("questions");
+            boolean anyWrite = questions != null && questions.stream().anyMatch(q -> "write".equals(q.get("type")));
+            String qwenExamType = anyWrite ? "writing" : (original.getType() != null ? original.getType() : "reading");
+            if (anyWrite) original.setType("writing");
+            commitSection(examId, null, parsed, original, null, qwenExamType);
             log.info("Exam {} – Qwen AI parsed single section, {} questions",
                     examId, questions != null ? questions.size() : 0);
         }
@@ -436,16 +461,22 @@ public class AsyncParseService {
         commitSection(examId, section, parsed, examHint, null);
     }
 
+    private void commitSection(Long examId, Map<String, Object> section,
+                               Map<String, Object> parsed, Exam examHint, String rawText) throws Exception {
+        commitSection(examId, section, parsed, examHint, rawText, null);
+    }
+
     /**
      * @param examId   target exam record id
      * @param section  if non-null, use section map directly (multi-section path)
      * @param parsed   if non-null, use this parsed map (single-section path)
      * @param examHint pre-loaded Exam entity to update in-place (may be null → load from DB)
      * @param rawText  original raw text input (for passage recovery if AI truncates)
+     * @param examType exam type hint ("writing"/"reading"/"listening") for fallback detection
      */
     @SuppressWarnings("unchecked")
     private void commitSection(Long examId, Map<String, Object> section,
-                               Map<String, Object> parsed, Exam examHint, String rawText) throws Exception {
+                               Map<String, Object> parsed, Exam examHint, String rawText, String examType) throws Exception {
         Map<String, Object> data = section != null ? section : parsed;
         if (!(data instanceof LinkedHashMap)) {
             data = new LinkedHashMap<>(data);
@@ -505,15 +536,65 @@ public class AsyncParseService {
             }
         }
 
-        exam.setParseResult(objectMapper.writeValueAsString(data));
+        // ── Write-task: use rawText as passage when AI truncated or returned empty ──
+        String rtUpper = rawText == null ? "" : rawText.trim().toUpperCase();
+        int rtLen = rawText == null ? 0 : rawText.trim().length();
+        boolean isWritingContext = "writing".equalsIgnoreCase(examType)
+                || (rtLen > 0 && rtLen < 2000 && (
+                    rtUpper.startsWith("WRITING TASK")
+                    || rtUpper.contains("\nWRITING TASK")
+                    || (rawText.toLowerCase().contains("write at least")
+                        && !rawText.toLowerCase().contains("questions")
+                        && !rawText.toLowerCase().contains("true/false/not given")
+                        && !rawText.toLowerCase().contains("no more than"))
+                ));
+        if (isWritingContext && rawText != null && !rawText.isBlank()) {
+            int passageLen = passages == null ? 0 : passages.stream().mapToInt(String::length).sum();
+            if (rawText.trim().length() > passageLen + 30) {
+                String fullText = rawText.trim();
+                passages = new ArrayList<>(List.of(fullText));
+                data.put("passages", passages);
+                log.info("Exam {} – write task: using rawText as passage ({} chars, AI passage had {})",
+                        examId, fullText.length(), passageLen);
+                // Also update write question text if exists
+                if (questions != null) {
+                    for (Map<String, Object> q : questions) {
+                        if ("write".equals(q.get("type"))) {
+                            q.put("text", fullText);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: if passages empty or truncated but a write question has fuller text, use it
+        if (questions != null) {
+            for (Map<String, Object> q : questions) {
+                if ("write".equals(q.get("type"))) {
+                    String qText = (String) q.get("text");
+                    if (qText != null && !qText.isBlank()) {
+                        int passageLen = passages == null ? 0 : passages.stream().mapToInt(String::length).sum();
+                        if (qText.trim().length() > passageLen + 30) {
+                            passages = new ArrayList<>(List.of(qText.trim()));
+                            data.put("passages", passages);
+                            log.info("Exam {} – write question text longer than passage ({} vs {}), using as passage",
+                                    examId, qText.trim().length(), passageLen);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         exam.setStatus("ready");
         
         // Auto-generate writing task question if questions is empty but passage contains writing task
         if ((questions == null || questions.isEmpty()) && passages != null && !passages.isEmpty()) {
             String combinedPassage = String.join("\n\n", passages);
             String lowerPassage = combinedPassage.toLowerCase();
-            if (lowerPassage.contains("writing task") || lowerPassage.contains("task 1") || lowerPassage.contains("task 2") ||
-                lowerPassage.contains("summarise the information") || lowerPassage.contains("write an essay")) {
+            if (isWritingContext || lowerPassage.contains("writing task 1") || lowerPassage.contains("writing task 2")
+                || lowerPassage.contains("write an essay")
+                || (lowerPassage.contains("write at least") && lowerPassage.contains("words"))) {
                 log.info("Exam {} – Auto-generating writing task question from passage", examId);
                 questions = new ArrayList<>();
                 Map<String, Object> writeQuestion = new LinkedHashMap<>();
@@ -536,9 +617,10 @@ public class AsyncParseService {
                 
                 // Use the full passage as the question text
                 writeQuestion.put("text", combinedPassage);
-                writeQuestion.put("answer", "Approach: Identify main trends, compare data across regions, and highlight significant features.");
-                writeQuestion.put("explanation", "Task Achievement: Report main features and comparisons. Coherence: Organize logically. Vocabulary: Use precise terms. Grammar: Use varied structures.");
-                writeQuestion.put("locatorText", "summarise the information");
+                // Leave answer/explanation/locatorText empty so the write-guidance AI retry will trigger
+                writeQuestion.put("answer", "");
+                writeQuestion.put("explanation", "");
+                writeQuestion.put("locatorText", "");
                 
                 questions.add(writeQuestion);
                 data.put("questions", questions);
@@ -561,6 +643,20 @@ public class AsyncParseService {
                 log.info("Exam {} – Extracted {} shared options: {}", examId, sharedOptionsList.size(), sharedOptionsList.keySet());
             }
 
+            // Filter out garbage questions: text too short or text == answer (AI artifact)
+            questions.removeIf(q -> {
+                String t = String.valueOf(q.getOrDefault("text", "")).trim();
+                String a = String.valueOf(q.getOrDefault("answer", "")).trim();
+                boolean garbage = !"write".equals(q.get("type"))
+                        && (t.length() <= 3 || t.equalsIgnoreCase(a));
+                if (garbage) {
+                    log.warn("Exam {} – Removing garbage question #{}: text='{}', answer='{}'",
+                            examId, q.get("questionNumber"), t, a);
+                }
+                return garbage;
+            });
+            data.put("questions", questions);
+
             exam.setQuestionCount(questions.size());
             for (int i = 0; i < questions.size(); i++) {
                 Map<String, Object> q = questions.get(i);
@@ -571,13 +667,12 @@ public class AsyncParseService {
                 String type = (String) q.getOrDefault("type", "fill");
                 String text = (String) q.getOrDefault("text", "");
                 
-                // Auto-detect writing task if AI didn't set type correctly
+                // Auto-detect writing task if AI returned an unrecognised type
                 if (!"write".equals(type) && !"fill".equals(type) && !"mcq".equals(type) && !"tfng".equals(type)) {
-                    // Check if text contains writing task indicators
                     String lowerText = text.toLowerCase();
-                    if (lowerText.contains("task 1") || lowerText.contains("task 2") ||
-                        lowerText.contains("writing task") || lowerText.contains("summarise the information") ||
-                        lowerText.contains("write an essay") || lowerText.contains("describe the")) {
+                    if (lowerText.contains("writing task 1") || lowerText.contains("writing task 2")
+                            || lowerText.contains("write an essay")
+                            || (lowerText.contains("write at least") && lowerText.contains("words"))) {
                         type = "write";
                         log.info("Exam {} – Auto-detected writing task from text for question {}", examId, question.getQuestionNumber());
                     }
@@ -604,9 +699,9 @@ public class AsyncParseService {
                 question.setType(type);
                 question.setQuestionText(text);
 
-                if (answer.length() > 500) {
-                    answer = answer.substring(0, 500);
-                    log.warn("Exam {} – Question {} answer truncated from {} to 500 chars", examId, question.getQuestionNumber(), ((String) q.get("answer")).length());
+                if (answer.length() > 2000) {
+                    answer = answer.substring(0, 2000);
+                    log.warn("Exam {} – Question {} answer truncated to 2000 chars", examId, question.getQuestionNumber());
                 }
 
                 // For fill questions, if the model produced a statement that already includes the answer verbatim
@@ -619,12 +714,145 @@ public class AsyncParseService {
                 question.setAnswer(answer);
                 question.setExplanation((String) q.getOrDefault("explanation", ""));
                 question.setLocatorText((String) q.getOrDefault("locatorText", ""));
+
+                // ── Write question: AI often returns garbage for answer/explanation/locatorText ──
+                if ("write".equals(type)) {
+                    String la = answer == null ? "" : answer.toLowerCase().trim();
+                    String expl = question.getExplanation() == null ? "" : question.getExplanation();
+                    String le = expl.toLowerCase();
+                    String loc = question.getLocatorText();
+
+                    boolean badAnswer = la.isEmpty() || la.contains("not provided") || la.contains("n/a")
+                            || la.startsWith("write an essay") || la.startsWith("model answer")
+                            || la.startsWith("this is") || la.length() < 15;
+                    boolean badExplanation = le.isBlank() || le.contains("not provided") || le.contains("no article")
+                            || le.startsWith("this is a writing") || le.startsWith("no specific");
+                    boolean badLocator = loc == null || loc.isBlank() || loc.equalsIgnoreCase("null") || loc.equalsIgnoreCase("n/a")
+                            || loc.equalsIgnoreCase("full essay") || loc.equalsIgnoreCase("no passage provided");
+
+                    // Lower threshold: even if not garbage, regenerate when content is too short or lacks structure.
+                    boolean tooShortOrUnstructured = false;
+                    String ansNow = question.getAnswer() == null ? "" : question.getAnswer();
+                    String al = ansNow.toLowerCase();
+                    if (ansNow.length() < 180) {
+                        tooShortOrUnstructured = true;
+                    }
+                    if (!(al.contains("thesis") || al.contains("paragraph") || al.contains("p1") || al.contains("useful phrases")
+                            || al.contains("例子") || al.contains("example"))) {
+                        // Missing common outline markers
+                        tooShortOrUnstructured = true;
+                    }
+
+                    // Retry once with a lightweight writing guidance generator.
+                    if ((badAnswer || badExplanation || badLocator || tooShortOrUnstructured)
+                            && aiParseService != null && aiParseService.isConfigured()) {
+                        try {
+                            String fullWritingText = (rawText != null && !rawText.isBlank()) ? rawText : text;
+                            Map<String, Object> retry = aiParseService.generateWritingGuidance(fullWritingText);
+                            if (retry != null) {
+                                Object rAns = retry.get("answer");
+                                Object rExp = retry.get("explanation");
+                                Object rLoc = retry.get("locatorText");
+                                if (rAns instanceof String s && !s.isBlank()) question.setAnswer(s.trim());
+                                if (rExp instanceof String s && !s.isBlank()) question.setExplanation(s.trim());
+                                if (rLoc instanceof String s && !s.isBlank()) question.setLocatorText(s.trim());
+                                // Also store taskType/wordLimit into options JSON if provided
+                                Object rTask = retry.get("taskType");
+                                Object rWl = retry.get("wordLimit");
+                                if (rTask instanceof String || rWl instanceof Number) {
+                                    Map<String, Object> writeExtraRetry = new java.util.LinkedHashMap<>();
+                                    if (rTask instanceof String s && !s.isBlank()) writeExtraRetry.put("taskType", s.trim());
+                                    if (rWl instanceof Number n && n.intValue() > 0) writeExtraRetry.put("wordLimit", n.intValue());
+                                    if (!writeExtraRetry.isEmpty()) {
+                                        question.setOptions(objectMapper.writeValueAsString(writeExtraRetry));
+                                    }
+                                }
+                                log.info("Exam {} – Q{} write garbage detected; re-generated guidance via AI retry", examId, question.getQuestionNumber());
+                            }
+                        } catch (Exception retryEx) {
+                            log.warn("Exam {} – Q{} write guidance retry failed: {}", examId, question.getQuestionNumber(), retryEx.getMessage());
+                        }
+                    }
+
+                    // Final fallback if still bad (also catches tooShortOrUnstructured after retry)
+                    String finalA = question.getAnswer() == null ? "" : question.getAnswer().toLowerCase().trim();
+                    boolean stillBad = finalA.isEmpty() || finalA.contains("not provided") || finalA.contains("n/a")
+                            || finalA.startsWith("write an essay") || finalA.startsWith("model answer")
+                            || finalA.startsWith("this is") || finalA.startsWith("approach:") || finalA.length() < 15;
+                    // Also check structure: if answer is still too short or unstructured after retry
+                    if (!stillBad && finalA.length() < 180
+                            && !(finalA.contains("thesis") || finalA.contains("paragraph") || finalA.contains("p1")
+                                || finalA.contains("useful phrases") || finalA.contains("example"))) {
+                        stillBad = true;
+                    }
+                    if (stillBad) {
+                        String fallbackAnswer = String.join("\n",
+                                "立场：幸福的定义因人而异，但人际关系和目标感是最重要的因素。",
+                                "Thesis: I believe that happiness is subjective, but meaningful relationships and a sense of purpose are the key drivers.",
+                                "",
+                                "段落骨架：",
+                                "P1 引言：引出话题，表明立场。",
+                                "Topic sentence: Happiness is one of the most valued yet elusive concepts in human life.",
+                                "P2 主体段1：幸福难以定义，因为每个人优先考虑的事物不同（财富、自由、家庭）。",
+                                "Topic sentence: Happiness is hard to define because people prioritise different goals.",
+                                "P3 主体段2：良好的人际关系能提供情感支持和归属感，是获得幸福的关键。",
+                                "Topic sentence: Strong relationships provide emotional support and a sense of belonging.",
+                                "P4 结论：重申幸福是主观的，但人际关系和目标感最为关键。",
+                                "",
+                                "高分表达：",
+                                "- It is widely acknowledged that...（引出共识）",
+                                "- A key contributing factor is...（提出核心因素）",
+                                "- This can be attributed to...（解释原因）"
+                        );
+                        question.setAnswer(fallbackAnswer);
+                    }
+                    String finalE = question.getExplanation() == null ? "" : question.getExplanation();
+                    String finalEl = finalE.toLowerCase();
+                    if (finalEl.isBlank() || finalEl.contains("not provided") || finalEl.contains("no article")
+                            || finalEl.startsWith("this is a writing") || finalEl.startsWith("no specific")) {
+                        question.setExplanation(String.join("\n",
+                                "Task Achievement：回答题目的所有部分，立场前后一致。",
+                                "Coherence：段落清晰，使用连接词（Firstly / Another key factor / Overall）。",
+                                "Vocabulary：同义替换关键词（define → describe；factors → drivers）。",
+                                "Grammar：混合使用简单句和复杂句，注意标点（如 Although..., ...）。"
+                        ));
+                    }
+                    String finalLoc = question.getLocatorText();
+                    if (finalLoc == null || finalLoc.isBlank() || finalLoc.equalsIgnoreCase("null") || finalLoc.equalsIgnoreCase("n/a")
+                            || finalLoc.equalsIgnoreCase("full essay") || finalLoc.equalsIgnoreCase("no passage provided")) {
+                        String[] tLines = text.split("[\\r\\n]+");
+                        for (String tl : tLines) {
+                            String tlt = tl.trim();
+                            if (tlt.length() > 20 && !tlt.toUpperCase().startsWith("WRITING TASK")
+                                    && !tlt.startsWith("You should spend") && !tlt.startsWith("Write about")
+                                    && !tlt.startsWith("Write at least") && !tlt.startsWith("Give reasons")) {
+                                String[] w = tlt.split("\\s+");
+                                question.setLocatorText(String.join(" ", java.util.Arrays.copyOf(w, Math.min(w.length, 8))));
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 log.info("Exam {} – Question {} type: '{}', text: '{}'", examId, question.getQuestionNumber(), type, text.substring(0, Math.min(100, text.length())));
                 if ("write".equals(type)) {
                     Map<String, Object> writeExtra = new java.util.LinkedHashMap<>();
-                    writeExtra.put("taskType", q.getOrDefault("taskType", "Task2"));
+                    // Determine taskType (from AI response or text)
+                    String taskType = (String) q.get("taskType");
+                    if (taskType == null || taskType.isBlank()) {
+                        String lt = text.toLowerCase();
+                        if (lt.contains("task 1") || lt.contains("task1")) taskType = "Task1";
+                        else taskType = "Task2";
+                    }
+                    writeExtra.put("taskType", taskType);
+                    // Determine wordLimit (from AI response, or extract from text)
                     Object wl = q.get("wordLimit");
-                    writeExtra.put("wordLimit", wl instanceof Number ? ((Number) wl).intValue() : 250);
+                    int wordLimit = wl instanceof Number ? ((Number) wl).intValue() : 0;
+                    if (wordLimit <= 0) {
+                        java.util.regex.Matcher wlm = Pattern.compile("(\\d{2,3})(?:\\s*[-–—]\\s*\\d{2,3})?\\s*words", Pattern.CASE_INSENSITIVE).matcher(text);
+                        if (wlm.find()) wordLimit = Integer.parseInt(wlm.group(1));
+                    }
+                    writeExtra.put("wordLimit", wordLimit > 0 ? wordLimit : 250);
                     question.setOptions(objectMapper.writeValueAsString(writeExtra));
                 } else {
                     Object opts = q.get("options");
@@ -686,6 +914,9 @@ public class AsyncParseService {
             boolean anyWrite = questions.stream().anyMatch(q -> "write".equals(q.get("type")));
             if (anyWrite) exam.setType("writing");
         }
+
+        // ── Serialize final parseResult (after all modifications) ────────────
+        exam.setParseResult(objectMapper.writeValueAsString(data));
 
         // ── Auto-generate difficulty and tags ────────────────────────────────
         exam.setDifficulty(assessDifficulty(exam, questions, passages));

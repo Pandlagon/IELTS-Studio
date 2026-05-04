@@ -87,6 +87,10 @@ public class ExamService {
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("未选择文件");
         }
+        // 同一用户不能创建同名试卷
+        if (examMapper.countByUserIdAndTitle(userId, title) > 0) {
+            throw new RuntimeException("已存在同名试卷「" + title + "」，请更换名称");
+        }
         // 创建试卷记录，状态置为"解析中"
         Exam exam = new Exam();
         exam.setUserId(userId);
@@ -110,6 +114,10 @@ public class ExamService {
                                  Integer duration, boolean parsePrecise, String extractedText) throws Exception {
         if (files == null || files.length == 0) {
             throw new RuntimeException("未选择图片文件");
+        }
+        // 同一用户不能创建同名试卷
+        if (examMapper.countByUserIdAndTitle(userId, title) > 0) {
+            throw new RuntimeException("已存在同名试卷「" + title + "」，请更换名称");
         }
         Exam exam = new Exam();
         exam.setUserId(userId);

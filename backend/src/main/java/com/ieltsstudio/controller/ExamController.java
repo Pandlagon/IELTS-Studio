@@ -194,4 +194,21 @@ public class ExamController {
             return Result.error("翻译失败: " + e.getMessage());
         }
     }
+
+    /**
+     * POST /exams/ai-chat — AI assistant chat based on exam context
+     * body: { "examContext": "...", "question": "..." }
+     */
+    @PostMapping("/ai-chat")
+    public Result<?> aiChat(@RequestBody Map<String, String> req,
+                            @AuthenticationPrincipal AuthUser authUser) {
+        try {
+            String answer = aiParseService.chatWithContext(
+                    req.getOrDefault("examContext", ""),
+                    req.getOrDefault("question", ""));
+            return Result.success(Map.of("answer", answer));
+        } catch (Exception e) {
+            return Result.error("AI 助手回答失败: " + e.getMessage());
+        }
+    }
 }

@@ -30,6 +30,10 @@ public class ExamCollectionService {
     }
 
     public ExamCollection createCollection(Long userId, String title, String description) {
+        // 同一用户不能创建同名试卷集
+        if (collectionMapper.countByUserIdAndTitle(userId, title) > 0) {
+            throw new RuntimeException("已存在同名试卷集「" + title + "」，请更换名称");
+        }
         ExamCollection c = new ExamCollection();
         c.setUserId(userId);
         c.setTitle(title);

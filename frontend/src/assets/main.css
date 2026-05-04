@@ -37,6 +37,34 @@
   --transition: 0.2s ease;
 }
 
+/* ─── Dark Theme ───────────────────────────────────────────────── */
+html.dark {
+  --bg-primary: #1C1B1A;
+  --bg-white: #262524;
+  --bg-card: #262524;
+  --bg-nav: rgba(28, 27, 26, 0.94);
+
+  --color-primary: #52B788;
+  --color-primary-dark: #40916C;
+  --color-primary-hover: #6BC99A;
+  --color-accent: #52B788;
+  --color-accent-light: #3A5A48;
+
+  --text-primary: #EDE9E3;
+  --text-secondary: #B5AFA6;
+  --text-muted: #7A756E;
+
+  --border-color: #3A3836;
+  --border-light: #302E2C;
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.16);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.24);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.28);
+
+  color-scheme: dark;
+}
+
 /* ─── Reset ─────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -183,7 +211,7 @@ img {
 }
 
 .btn-ghost:hover {
-  background-color: rgba(27, 67, 50, 0.06);
+  background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
   color: var(--color-primary);
 }
 
@@ -764,3 +792,292 @@ img {
   border-radius: var(--radius-full);
   padding: 6px 14px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Dark Mode – Element Plus & hardcoded color overrides
+   ═══════════════════════════════════════════════════════════════════ */
+html.dark .el-dialog__header {
+  background: linear-gradient(135deg, #232220 0%, var(--bg-white) 100%) !important;
+}
+html.dark .el-dialog__footer {
+  background: #201f1e !important;
+}
+html.dark .el-overlay {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+html.dark .el-dialog .el-alert {
+  border-color: #3A5A48 !important;
+  background: #1e2b23 !important;
+}
+html.dark .el-dialog .el-alert .el-alert__title {
+  color: var(--color-accent) !important;
+}
+html.dark .el-button:not(.el-button--primary) {
+  background: var(--bg-white) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-button:not(.el-button--primary):hover {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  background: #1e2b23 !important;
+}
+html.dark .el-dropdown-menu {
+  background: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-dropdown-menu__item {
+  color: var(--text-secondary) !important;
+}
+html.dark .el-dropdown-menu__item:not(.is-disabled):focus,
+html.dark .el-dropdown-menu__item:hover {
+  background: rgba(82, 183, 136, 0.1) !important;
+  color: var(--color-primary) !important;
+}
+html.dark .el-dropdown-menu__item.is-divided {
+  border-top-color: var(--border-color) !important;
+}
+html.dark .el-dropdown-menu__item.is-divided::before {
+  background: transparent !important;
+}
+html.dark .el-popper.is-light {
+  background: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-popper.is-light .el-popper__arrow::before {
+  background: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-message-box {
+  background: var(--bg-white) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-message-box__title {
+  color: var(--text-primary) !important;
+}
+html.dark .el-message-box__content {
+  color: var(--text-secondary) !important;
+}
+
+/* Dark mode: Element Plus form inputs (login/register) */
+html.dark .el-input__wrapper {
+  background-color: var(--bg-card) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+html.dark .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+  background-color: var(--bg-white) !important;
+}
+html.dark .el-input__inner {
+  color: var(--text-primary) !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+html.dark .el-input__inner::placeholder {
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+}
+html.dark .el-input__prefix .el-icon,
+html.dark .el-input__suffix .el-icon {
+  color: var(--text-muted) !important;
+}
+html.dark .el-textarea__inner {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-textarea__inner:focus {
+  border-color: var(--color-primary) !important;
+}
+html.dark .el-form-item__label {
+  color: var(--text-secondary) !important;
+}
+html.dark .el-form-item__error {
+  color: #f87171 !important;
+}
+html.dark .el-checkbox__label {
+  color: var(--text-secondary) !important;
+}
+html.dark .el-checkbox__inner {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+html.dark .el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+html.dark .el-button--primary {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+html.dark .el-button--primary:hover {
+  background-color: var(--color-primary-hover) !important;
+  border-color: var(--color-primary-hover) !important;
+}
+
+/* Autofill override: prevent browser blue tint on auto-filled inputs */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-white) inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+  caret-color: var(--text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-card) inset !important;
+}
+
+/* Dark mode: hardcoded light backgrounds → dark equivalents */
+html.dark .batch-complete-ring {
+  background: linear-gradient(135deg, #1a2e23, #1e3a2a) !important;
+  border-color: #2D6A4F !important;
+  box-shadow: 0 0 0 6px rgba(82, 183, 136, 0.08) !important;
+}
+html.dark .batch-complete-ring.gold {
+  background: linear-gradient(135deg, #2d2815, #3d3520) !important;
+  border-color: #a37e1e !important;
+  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.08) !important;
+}
+html.dark .tag-badge {
+  background: #1e2b23 !important;
+  border-color: #3A5A48 !important;
+}
+html.dark .badge-green { background: #1e2b23; color: #6BC99A; }
+html.dark .badge-amber { background: #2d2815; color: #d4a017; }
+html.dark .badge-blue  { background: #1a2535; color: #7ab8f5; }
+html.dark .badge-red   { background: #2d1c1c; color: #f59898; }
+
+/* Dark mode: POS badges (WordCard + WordsView) */
+html.dark .pos-adj,
+html.dark .pos-label-adj,
+html.dark .rpl-adj  { background: #332d1a !important; color: #d4a017 !important; }
+html.dark .pos-n,
+html.dark .pos-label-n,
+html.dark .rpl-n    { background: #1a2535 !important; color: #7ab8f5 !important; }
+html.dark .pos-v,
+html.dark .pos-label-v,
+html.dark .rpl-v    { background: #1a2e23 !important; color: #6BC99A !important; }
+html.dark .pos-adv,
+html.dark .pos-label-adv,
+html.dark .rpl-adv  { background: #25203a !important; color: #b094f5 !important; }
+html.dark .pos-prep,
+html.dark .pos-label-prep,
+html.dark .rpl-prep { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .pos-label-phrase,
+html.dark .rpl-phrase { background: #2a2928 !important; color: #9a9590 !important; }
+
+/* Dark mode: status chips & metric pills */
+html.dark .status-chip.known,
+html.dark .word-status.known,
+html.dark .spell-feedback.correct { background: #1a2e23 !important; color: #6BC99A !important; }
+html.dark .status-chip.unknown,
+html.dark .word-status.unknown,
+html.dark .spell-feedback.wrong { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .status-chip.due { background: #1a2535 !important; color: #7ab8f5 !important; }
+html.dark .status-chip.scheduled { background: #2a2928 !important; color: var(--text-secondary) !important; }
+html.dark .metric-pill.due { background: #1a2535 !important; color: #7ab8f5 !important; }
+html.dark .metric-pill.overdue { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .review-hint-item { background: var(--bg-card) !important; color: var(--text-secondary) !important; }
+html.dark .review-hint-item.urgent { background: #2d1c1c !important; color: #f59898 !important; }
+
+/* Dark mode: word card know/unknown buttons */
+html.dark .btn-unknown { color: #f87171 !important; border-color: #5c2828 !important; }
+html.dark .btn-unknown:hover { background: #DC2626 !important; color: #fff !important; border-color: #DC2626 !important; }
+html.dark .btn-know { color: #4ade80 !important; border-color: #1e4d32 !important; }
+html.dark .btn-know:hover { background: #16A34A !important; color: #fff !important; border-color: #16A34A !important; }
+html.dark .btn-next { color: #60a5fa !important; border-color: #1e3a5c !important; }
+html.dark .btn-next:hover { background: #2563EB !important; color: #fff !important; border-color: #2563EB !important; }
+
+/* Dark mode: spell input feedback */
+html.dark .spell-input.correct { border-color: #4ade80 !important; background: #1a2e23 !important; box-shadow: 0 0 0 3px rgba(82, 183, 136, 0.1) !important; }
+html.dark .spell-input.wrong { border-color: #f87171 !important; background: #2d1c1c !important; box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.1) !important; }
+
+/* Dark mode: action button hovers */
+html.dark .card-action-btn.edit-btn:hover,
+html.dark .entry-icon-btn.edit:hover { background: #1e2b23 !important; border-color: #52B788 !important; color: #52B788 !important; }
+html.dark .card-action-btn.add-btn:hover,
+html.dark .entry-icon-btn.add:hover { background: #1a2535 !important; border-color: #7ab8f5 !important; color: #7ab8f5 !important; }
+html.dark .entry-icon-btn.del:hover { background: #2d1c1c !important; border-color: #f59898 !important; color: #f59898 !important; }
+html.dark .book-tab-del:hover { background: #EF4444 !important; color: white !important; }
+html.dark .book-tab-fail { color: #f59898 !important; background: #2d1c1c !important; }
+
+/* Dark mode: spell play button */
+html.dark .spell-play-btn { background: #1e2b23 !important; border-color: #3A5A48 !important; color: #6BC99A !important; }
+html.dark .spell-play-btn:hover { background: #243a2d !important; border-color: #52B788 !important; }
+
+/* Dark mode: ClozeView selected rows, chips, options */
+html.dark .word-select-row:hover { background: #2a2928 !important; }
+html.dark .word-select-row.selected { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+html.dark .word-chip { background: #1e2b23 !important; color: #6BC99A !important; }
+html.dark .opt-btn:hover { background: #2a2928 !important; }
+html.dark .opt-btn.selected { background: #1e2b23 !important; border-color: var(--color-primary) !important; color: #6BC99A !important; }
+html.dark .passage-text :deep(.blank-filled),
+html.dark .passage-text :deep(.blank-correct) { background: #1e2b23 !important; color: #6BC99A !important; }
+
+/* ── Dark mode: Exam / CollectionExam / Result shared ────────── */
+/* Passage keyword highlights */
+html.dark .passage-para :deep(.passage-keyword) { background: #1e2b23 !important; color: #6BC99A !important; }
+html.dark .passage-para :deep(.highlight-red) { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .passage-section-badge { background: rgba(82,183,136,0.1) !important; border-color: rgba(82,183,136,0.2) !important; }
+
+/* Timer warning */
+html.dark .timer.timer-warning { background: #2d1c1c !important; }
+
+/* MCQ / option selected */
+html.dark .mcq-btn.selected { background: rgba(82,183,136,0.08) !important; }
+html.dark .hint-btn.active { background: rgba(82,183,136,0.1) !important; }
+
+/* Confirm dialog warning/ready */
+html.dark .confirm-warning { background: #2d1c1c !important; color: #f59898 !important; border-color: #5c2828 !important; }
+html.dark .confirm-ready { background: #1e2b23 !important; color: #6BC99A !important; border-color: #3A5A48 !important; }
+
+/* Exam type badges */
+html.dark .type-reading { background: #1a2535 !important; color: #7ab8f5 !important; }
+html.dark .type-listening { background: #1a2e23 !important; color: #6BC99A !important; }
+html.dark .type-writing { background: #2d2815 !important; color: #d4a017 !important; }
+
+/* Upload tip */
+html.dark .upload-tip-info { background: #1a2535 !important; border-color: #1e3a5c !important; color: #7ab8f5 !important; }
+html.dark .upload-tip-warning { background: #2d2815 !important; border-color: #4a3d15 !important; }
+
+/* Delete/remove buttons */
+html.dark .btn-icon-delete:hover { background: #2d1c1c !important; }
+html.dark .upload-zone .file-remove { background: #2d1c1c !important; }
+
+/* Reorder button hover */
+html.dark .reorder-btn:hover:not(:disabled) { background: #1e2b23 !important; }
+
+/* AI chat assistant bubble */
+html.dark .ai-msg.assistant .ai-msg-bubble { background: var(--bg-primary) !important; color: var(--text-primary) !important; }
+
+/* Word collector tags */
+html.dark .collected-tag { background: #1a2535 !important; border-color: #1e3a5c !important; color: #7ab8f5 !important; }
+html.dark .clear-btn:hover { background: #2d1c1c !important; }
+html.dark .fab-minimize-btn:hover { background: var(--bg-card) !important; border-color: var(--border-color) !important; }
+
+/* ── Dark mode: ResultView ───────────────────────────────── */
+html.dark .hl-red-dot { background: #2d1c1c !important; border-color: #5c2828 !important; }
+html.dark .hl-green-dot { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+html.dark .rvp-sub { background: #1e2b23 !important; color: #6BC99A !important; }
+html.dark :deep(.hl-red) { background: #2d1c1c !important; border-color: #5c2828 !important; }
+html.dark :deep(.hl-green) { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+html.dark .review-num.correct { background: #1e2b23 !important; color: #6BC99A !important; }
+html.dark .review-num.wrong { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .review-num.write { background: #1a2535 !important; color: #7ab8f5 !important; }
+html.dark .user-answer.correct,
+html.dark .correct-answer { background: #1e2b23 !important; color: #6BC99A !important; }
+html.dark .user-answer.wrong { background: #2d1c1c !important; color: #f59898 !important; }
+html.dark .ai-fb-strengths { background: #1e2b23 !important; }
+html.dark .write-model-answer { background: #1e2b23 !important; }
+
+/* Exam section badges in ExamView / CollectionExamView */
+html.dark .section-badge-green { background: #1e2b23 !important; color: #6BC99A !important; border-color: #3A5A48 !important; }
+
+/* Dark mode: answered question blocks & sheet nums */
+html.dark .question-block.answered { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+html.dark .question-block.active { box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; }
+html.dark .sheet-num.answered { background: #1e2b23 !important; border-color: #3A5A48 !important; color: #6BC99A !important; }
+html.dark .switcher-tab.answered { border-color: #3A5A48 !important; }
+html.dark .switcher-tab.active.answered { background: #2D6A4F !important; border-color: #2D6A4F !important; }

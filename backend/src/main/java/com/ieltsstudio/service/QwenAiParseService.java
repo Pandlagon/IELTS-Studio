@@ -175,8 +175,8 @@ public class QwenAiParseService {
             questionNumber  : 整数（Task 1 为 1，Task 2 为 2）
             type            : "write"
             taskType        : "Task1" 或 "Task2"
-            wordLimit       : 150（Task 1）或 250（Task 2）
-            text            : 完整的题目提示文字（与上方 [Task Prompt] 区块相同）
+            wordLimit       : 整数，从原文提取字数要求；若原文说 "80-100 words" 则为 80；若未明确则 Task1=150，Task2=250
+            text            : 与 passages 中该任务的完整原文相同（包含标题、时间提示、话题引导、题目正文、字数要求等所有内容，不得省略）
             answer          : 建议的写作思路/关键点，≤60 字
             explanation     : 一句话说明高分作文应覆盖哪些要点
             locatorText     : 来自题目提示文字的【原词短语（4–8 个词）】

@@ -212,11 +212,11 @@
                 <div class="hint-panel-title">💡 写作思路提示</div>
                 <div v-if="question.answer" class="hint-points">
                   <div class="hint-section-label">📝 写作思路与要点</div>
-                  <p>{{ question.answer }}</p>
+                  <p style="white-space: pre-line;">{{ question.answer }}</p>
                 </div>
                 <div v-if="question.explanation" class="hint-criteria">
                   <div class="hint-section-label">✅ 评分维度提示</div>
-                  <p>{{ question.explanation }}</p>
+                  <p style="white-space: pre-line;">{{ question.explanation }}</p>
                 </div>
               </div>
             </template>
@@ -280,7 +280,73 @@
     <!-- FAB Group -->
     <div class="exam-fabs">
 
-    <!-- Highlight FAB -->
+    <!-- Toggle FABs visibility -->
+    <button class="fab-minimize-btn" @click.stop="showFabs = !showFabs" :title="showFabs ? '隐藏工具栏' : '显示工具栏'">
+      {{ showFabs ? '✕' : '🛠️' }}
+    </button>
+
+    <template v-if="showFabs">
+    <!-- 1. Translate FAB -->
+    <div class="translate-fab" :class="{ active: translateMode }">
+      <div class="fab-row">
+        <button class="fab-toggle tl-toggle" @click.stop="toggleTranslate" :title="translateMode ? '退出翻译模式' : '翻译'">
+          <span class="fab-icon">🌐</span>
+          <span class="fab-label">{{ translateMode ? '退出翻译' : '翻译' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. AI Assistant FAB -->
+    <div class="ai-assistant-fab">
+      <transition name="collector-expand">
+        <div v-if="aiChatOpen" class="ai-chat-panel" ref="aiPanelRef"
+          :class="{ 'ai-maximized': aiMaximized }"
+          :style="!aiMaximized ? { left: aiPos.x + 'px', top: aiPos.y + 'px', width: aiSize.w + 'px', height: aiSize.h + 'px' } : {}">
+          <div class="ai-chat-header" @mousedown.prevent="startDrag">
+            <span>🤖 AI 助手</span>
+            <div class="ai-header-actions">
+              <button class="ai-chat-btn" @click.stop="aiMaximized = !aiMaximized" :title="aiMaximized ? '还原' : '放大'">
+                <svg v-if="!aiMaximized" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="7" width="14" height="14" rx="1"/><path d="M9 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></svg>
+              </button>
+              <button class="ai-chat-btn" @click.stop="aiChatOpen = false">×</button>
+            </div>
+          </div>
+          <div class="ai-chat-messages" ref="aiChatMessagesRef">
+            <div v-if="aiMessages.length === 0" class="ai-chat-empty">
+              <p>你好！我是 AI 助手，可以回答关于本试卷的问题。</p>
+              <p class="ai-chat-hint">例如：第3题为什么选A？/ 这段话的主旨是什么？</p>
+            </div>
+            <div v-for="(msg, idx) in aiMessages" :key="idx" :class="['ai-msg', msg.role]">
+              <div class="ai-msg-bubble" v-html="msg.role === 'assistant' ? renderMd(msg.content) : escapeHtml(msg.content)"></div>
+            </div>
+            <div v-if="aiLoading" class="ai-msg assistant">
+              <div class="ai-msg-bubble ai-typing">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              </div>
+            </div>
+          </div>
+          <div class="ai-chat-input">
+            <input
+              v-model="aiQuestion"
+              @keyup.enter="sendAiChat"
+              placeholder="输入你的问题..."
+              :disabled="aiLoading"
+            />
+            <button @click="sendAiChat" :disabled="aiLoading || !aiQuestion.trim()">发送</button>
+          </div>
+          <div v-if="!aiMaximized" class="ai-resize-handle" @mousedown.prevent="startResize"></div>
+        </div>
+      </transition>
+      <div class="fab-row">
+        <button class="fab-toggle ai-toggle" @click.stop="aiChatOpen = !aiChatOpen" title="AI 助手">
+          <span class="fab-icon">🤖</span>
+          <span class="fab-label">{{ aiChatOpen ? '关闭助手' : 'AI 助手' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. Highlight FAB -->
     <div class="highlight-fab" :class="{ active: highlightMode }">
       <transition name="collector-expand">
         <div v-if="highlightMode && showColorPicker" class="color-picker-panel">
@@ -306,17 +372,7 @@
       </div>
     </div>
 
-    <!-- Translate FAB -->
-    <div class="translate-fab" :class="{ active: translateMode }">
-      <div class="fab-row">
-        <button class="fab-toggle tl-toggle" @click.stop="toggleTranslate" :title="translateMode ? '退出翻译模式' : '翻译'">
-          <span class="fab-icon">🌐</span>
-          <span class="fab-label">{{ translateMode ? '退出翻译' : '翻译' }}</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Word Collector FAB -->
+    <!-- 4. Word Collector FAB -->
     <div class="word-collector-fab" :class="{ active: collectMode }">
       <transition name="collector-expand">
         <div v-if="collectMode && collectedWords.size > 0" class="collected-panel">
@@ -343,6 +399,7 @@
         </button>
       </div>
     </div>
+    </template>
 
     </div><!-- /exam-fabs -->
 
@@ -385,13 +442,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useExamStore } from '@/stores/exam'
 import { useWordStore } from '@/stores/word'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { translateApi } from '@/api/translate'
+import request from '@/api/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -978,6 +1036,45 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function renderMd(text) {
+  if (!text) return ''
+  let html = escapeHtml(text)
+  html = html.replace(/```[\s\S]*?```/g, m => {
+    const inner = m.slice(3, -3).replace(/^\w*\n/, '')
+    return `<pre class="md-code-block">${inner}</pre>`
+  })
+  html = html.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>')
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  const lines = html.split('\n')
+  const result = []
+  let inList = false
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^#{1,3}\s/.test(trimmed)) {
+      if (inList) { result.push('</ul>'); inList = false }
+      const level = trimmed.match(/^(#+)/)[1].length
+      result.push(`<h${level + 2} class="md-h">${trimmed.replace(/^#+\s*/, '')}</h${level + 2}>`)
+    } else if (/^&gt;\s/.test(trimmed)) {
+      if (inList) { result.push('</ul>'); inList = false }
+      result.push(`<blockquote class="md-quote">${trimmed.replace(/^&gt;\s*/, '')}</blockquote>`)
+    } else if (/^[-*]\s/.test(trimmed)) {
+      if (!inList) { result.push('<ul class="md-list">'); inList = true }
+      result.push(`<li>${trimmed.replace(/^[-*]\s*/, '')}</li>`)
+    } else if (/^\d+\.\s/.test(trimmed)) {
+      if (!inList) { result.push('<ol class="md-list">'); inList = true }
+      result.push(`<li>${trimmed.replace(/^\d+\.\s*/, '')}</li>`)
+    } else {
+      if (inList) { result.push('</ul>'); inList = false }
+      if (trimmed) result.push(`<p class="md-p">${trimmed}</p>`)
+      else result.push('<br/>')
+    }
+  }
+  if (inList) result.push('</ul>')
+  return result.join('')
+}
+
 const fontSize = ref(15)
 const showSheet = ref(false)
 const showConfirm = ref(false)
@@ -1045,8 +1142,45 @@ function toggleHint(qId) {
   }
 }
 
+function rebreakCollapsedWriteTask(text) {
+  // If text has very few line breaks but is long, AI likely collapsed the formatting
+  const realLines = text.split('\n').filter(l => l.trim()).length
+  if (realLines > 3 || text.length < 80) return text
+  return text
+    .replace(/(\?)\s+(?=[A-Z])/g, '$1\n')
+    .replace(/(\.)\s+(Give reasons|Discuss both|To what extent|Do you agree|Some people|In many|You should spend)/g, '$1\n\n$2')
+    .replace(/(\.)\s+(Write at least \d+)/gi, '$1\n\n$2')
+    .replace(/(\.)\s+(Write about the following topic:?)/gi, '$1\n\n$2')
+    .replace(/(topic:?)\s+/gi, '$1\n\n')
+    .replace(/(\.)\s+(About \d+[–\-]\d+\s*words)/gi, '$1\n\n$2')
+    .replace(/(\.)\s+(Requirements:?|Directions:?)/gi, '$1\n\n$2')
+    .replace(/^\s*(WRITING\s+TASK\s*\d?)/i, '$1\n\n')
+}
+
+function joinWrappedLines(text) {
+  // Join mid-sentence line breaks from PDF wrapping:
+  // if a line does NOT end with sentence-ending punctuation and the next line
+  // starts with a lowercase letter (or continues a sentence), merge them.
+  const lines = text.split('\n')
+  const merged = []
+  for (let i = 0; i < lines.length; i++) {
+    const cur = lines[i]
+    const trimmed = cur.trimEnd()
+    const next = i + 1 < lines.length ? lines[i + 1] : null
+    if (next !== null && trimmed && !/[.?!:。？！：]$/.test(trimmed) && /^\s*[a-z]/.test(next)) {
+      merged.push(trimmed + ' ' + next.trimStart())
+      i++ // skip next line since we merged it
+    } else {
+      merged.push(cur)
+    }
+  }
+  return merged.join('\n')
+}
+
 function renderWritePassage(raw) {
-  const normalized = (raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  let normalized = (raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  normalized = joinWrappedLines(normalized)
+  normalized = rebreakCollapsedWriteTask(normalized)
   const lines = normalized.split('\n')
   if (!lines.some(l => l.trim())) return ''
   let html = ''
@@ -1081,7 +1215,7 @@ function renderWritePassage(raw) {
     }
 
     // Section headers: Requirements, Notes, Instructions etc.
-    if (/^(Requirements?|Instructions?|Notes?|Marks?|Task\s*\d*):?$/i.test(line)) {
+    if (/^(Requirements?|Instructions?|Notes?|Marks?):?$/i.test(line)) {
       closeList()
       html += `<div class="wtp-section">${escapeHtml(line)}</div>`
       inList = true
@@ -1096,27 +1230,29 @@ function renderWritePassage(raw) {
       continue
     }
     // Topic / Task label lines like "Topic: ..."
-    if (/^(Topic|Task\s*\d+|Subject|Title):/i.test(line)) {
+    if (/^(Topic|Subject|Title):/i.test(line)) {
       closeList()
       const [label, ...rest] = line.split(':')
       html += `<p class="wtp-topic"><span class="wtp-topic-label">${escapeHtml(label)}:</span> ${escapeHtml(rest.join(':').trim())}</p>`
       continue
     }
-    // Title line (first line, all-caps words or very short line)
-    if (i === 0 || /^[A-Z][^.!?]{0,80}$/.test(line) && lines.length > 1 && i === 0) {
+    // Title line: first non-empty line that looks like a heading (all-caps or "WRITING TASK X")
+    if (i === 0 && /^[A-Z\s\d]+$/.test(line) && line.length < 60) {
       closeList()
       html += `<h3 class="wtp-title">${escapeHtml(line)}</h3>`
       continue
     }
-    // Bullet-like items: short lines that are requirements/points
-    const isBullet = (/^[-•]\s+/.test(line) || /^[A-Za-z一-龥]/.test(line)) && line.length < 140
-      && (inList || /^(About|Write|Use|Include|Describe|Your|Who|What|Why|How|When|Where|A\s)/.test(line))
-    if (isBullet) {
+    // Explicit bullet items: lines starting with - or • or numbered like "1." "2."
+    const isExplicitBullet = /^[-•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)
+    // Continue existing list only if already inList and line is short
+    const isContinuedBullet = inList && line.length < 100 && !line.endsWith(':')
+    if (isExplicitBullet || isContinuedBullet) {
       if (!inList) {
         inList = true
         html += '<ul class="wtp-list">'
       }
-      html += `<li>${escapeHtml(line)}</li>`
+      const cleanLine = line.replace(/^[-•]\s+/, '').replace(/^\d+[.)]\s+/, '')
+      html += `<li>${escapeHtml(cleanLine)}</li>`
       continue
     }
     // Paragraph
@@ -1241,6 +1377,86 @@ const collectMode = ref(false)
 const collectedWords = ref(new Set())
 const examBodyRef = ref()
 const flushing = ref(false)
+
+// ── FAB toolbar visibility ──────────────────────────────
+const showFabs = ref(true)
+
+// ── AI assistant ────────────────────────────────────────
+const aiChatOpen = ref(false)
+const aiMessages = ref([])
+const aiQuestion = ref('')
+const aiLoading = ref(false)
+const aiPanelRef = ref(null)
+const aiMaximized = ref(false)
+const aiPos = reactive({ x: window.innerWidth - 420, y: 80 })
+const aiSize = reactive({ w: 400, h: 520 })
+
+function startDrag(e) {
+  if (aiMaximized.value) return
+  const startX = e.clientX, startY = e.clientY
+  const origX = aiPos.x, origY = aiPos.y
+  function onMove(ev) {
+    aiPos.x = Math.max(0, Math.min(window.innerWidth - aiSize.w, origX + ev.clientX - startX))
+    aiPos.y = Math.max(0, Math.min(window.innerHeight - 56, origY + ev.clientY - startY))
+  }
+  function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+function startResize(e) {
+  const startX = e.clientX, startY = e.clientY
+  const origW = aiSize.w, origH = aiSize.h
+  function onMove(ev) {
+    aiSize.w = Math.max(320, origW + ev.clientX - startX)
+    aiSize.h = Math.max(300, origH + ev.clientY - startY)
+  }
+  function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+const aiChatMessagesRef = ref()
+
+function buildExamContext() {
+  const sec = currentSection.value
+  if (!sec) return ''
+  const passages = sec.passage || ''
+  const questions = (sec.questions || []).map(q =>
+    `Q${q.questionNumber} [${q.type}]: ${q.text}${q.answer ? ' (答案: ' + q.answer + ')' : ''}`
+  ).join('\n')
+  return `【文章】\n${passages}\n\n【题目】\n${questions}`
+}
+
+async function sendAiChat() {
+  const q = aiQuestion.value.trim()
+  if (!q || aiLoading.value) return
+  aiMessages.value.push({ role: 'user', content: q })
+  aiQuestion.value = ''
+  aiLoading.value = true
+  await nextTick()
+  if (aiChatMessagesRef.value) {
+    aiChatMessagesRef.value.scrollTop = aiChatMessagesRef.value.scrollHeight
+  }
+  try {
+    const res = await request.post('/exams/ai-chat', {
+      examContext: buildExamContext(),
+      question: q
+    }, { timeout: 60000 })
+    if (res && res.code === 200 && res.data?.answer) {
+      aiMessages.value.push({ role: 'assistant', content: res.data.answer })
+    } else {
+      aiMessages.value.push({ role: 'assistant', content: res?.message || 'AI 回答失败，请重试' })
+    }
+  } catch (e) {
+    aiMessages.value.push({ role: 'assistant', content: '请求失败: ' + (e?.message || '网络错误') })
+  } finally {
+    aiLoading.value = false
+    await nextTick()
+    if (aiChatMessagesRef.value) {
+      aiChatMessagesRef.value.scrollTop = aiChatMessagesRef.value.scrollHeight
+    }
+  }
+}
 
 // ── translate overlay ───────────────────────────────────
 const translateMode = ref(false)
@@ -2760,6 +2976,160 @@ onUnmounted(() => {
 .collector-expand-enter-from,
 .collector-expand-leave-to { opacity: 0; transform: translateY(8px) scale(0.97); }
 
+.fab-spacer { height: 6px; }
+
+.fab-minimize-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #D1D5DB;
+  background: #fff;
+  color: #6B7280;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+  align-self: flex-end;
+}
+.fab-minimize-btn:hover { background: #F3F4F6; border-color: #9CA3AF; }
+
+/* ── AI Assistant FAB & Chat Panel ──────────────────────── */
+.ai-assistant-fab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ai-toggle { background: #2D6A4F !important; }
+.ai-toggle:hover { background: #1B4332 !important; }
+
+.ai-chat-panel {
+  position: fixed; z-index: 1000;
+  background: var(--bg-white, #fff); border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18); display: flex; flex-direction: column;
+  overflow: hidden; border: 1px solid var(--border-color, #E5E7EB);
+}
+.ai-chat-panel.ai-maximized {
+  left: 5vw !important; top: 5vh !important;
+  width: 90vw !important; height: 90vh !important;
+  border-radius: 16px;
+}
+.ai-chat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: #2D6A4F; color: #fff; font-size: 14px; font-weight: 600;
+  cursor: grab; user-select: none; flex-shrink: 0;
+}
+.ai-chat-header:active { cursor: grabbing; }
+.ai-header-actions { display: flex; align-items: center; gap: 4px; }
+.ai-chat-btn { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; padding: 2px 6px; opacity: 0.8; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.ai-chat-btn:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+.ai-chat-messages {
+  flex: 1; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ai-resize-handle {
+  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.15) 50%);
+  border-radius: 0 0 12px 0;
+}
+.ai-chat-empty {
+  text-align: center;
+  color: #9CA3AF;
+  font-size: 13px;
+  padding: 30px 10px;
+}
+.ai-chat-empty p { margin: 4px 0; }
+.ai-chat-hint { font-size: 12px; color: #D1D5DB; }
+
+.ai-msg { display: flex; }
+.ai-msg.user { justify-content: flex-end; }
+.ai-msg.assistant { justify-content: flex-start; }
+
+.ai-msg-bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ai-msg-bubble p { margin: 0; }
+
+.ai-msg.user .ai-msg-bubble {
+  background: #2D6A4F;
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+.ai-msg.assistant .ai-msg-bubble {
+  background: #F3F4F6;
+  color: #1F2937;
+  border-bottom-left-radius: 3px;
+}
+
+.ai-typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+}
+.ai-typing .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9CA3AF;
+  animation: ai-dot-bounce 1.2s infinite ease-in-out;
+}
+.ai-typing .dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ai-dot-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.ai-chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #E5E7EB;
+  background: #FAFAFA;
+}
+.ai-chat-input input {
+  flex: 1;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.ai-chat-input input:focus { border-color: #2D6A4F; }
+.ai-chat-input button {
+  padding: 8px 16px;
+  background: #2D6A4F;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.ai-chat-input button:hover:not(:disabled) { background: #1B4332; }
+.ai-chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Markdown in AI bubbles */
+.ai-msg-bubble :deep(.md-p) { margin: 2px 0; }
+.ai-msg-bubble :deep(.md-h) { font-size: 14px; font-weight: 700; margin: 6px 0 2px; }
+.ai-msg-bubble :deep(.md-list) { margin: 4px 0; padding-left: 18px; }
+.ai-msg-bubble :deep(.md-list li) { margin: 2px 0; }
+.ai-msg-bubble :deep(.md-quote) { margin: 4px 0; padding: 4px 10px; border-left: 3px solid #9CA3AF; color: #6B7280; font-style: italic; }
+.ai-msg-bubble :deep(.md-code) { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+.ai-msg-bubble :deep(.md-code-block) { background: rgba(0,0,0,0.06); padding: 8px 10px; border-radius: 6px; font-family: monospace; font-size: 12px; overflow-x: auto; margin: 4px 0; white-space: pre-wrap; }
+.ai-msg-bubble :deep(strong) { font-weight: 700; }
+.ai-msg-bubble :deep(em) { font-style: italic; }
+
 @media (max-width: 1024px) {
   .write-visual-panel {
     padding: 10px;
@@ -2769,6 +3139,10 @@ onUnmounted(() => {
   }
   .wvp-chart-canvas {
     height: 240px;
+  }
+  .ai-chat-panel:not(.ai-maximized) {
+    width: 300px !important;
+    height: 400px !important;
   }
 }
 </style>

@@ -30,6 +30,14 @@
 
       <!-- Right Actions -->
       <div class="nav-actions">
+        <a class="github-link" href="https://github.com/Pandlagon/IELTS-Studio" target="_blank" rel="noopener" title="Star on GitHub">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          <span class="github-text">Star</span>
+        </a>
+        <button class="theme-toggle" @click="themeStore.toggle()" :title="themeStore.isDark ? '切换亮色模式' : '切换深色模式'">
+          <svg v-if="!themeStore.isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
         <template v-if="!authStore.isLoggedIn">
           <router-link to="/login" class="nav-btn-ghost">登录</router-link>
           <router-link to="/register" class="nav-btn-primary">注册</router-link>
@@ -67,6 +75,11 @@
         <router-link to="/words" class="mobile-link" @click="mobileOpen = false">背单词</router-link>
         <router-link to="/exams" class="mobile-link" @click="mobileOpen = false">模拟考试</router-link>
         <div class="mobile-divider"></div>
+        <a class="mobile-link" href="https://github.com/Pandlagon/IELTS-Studio" target="_blank" rel="noopener" @click="mobileOpen = false">⭐ GitHub Star</a>
+        <button class="mobile-link" @click="themeStore.toggle(); mobileOpen = false">
+          {{ themeStore.isDark ? '☀️ 亮色模式' : '🌙 深色模式' }}
+        </button>
+        <div class="mobile-divider"></div>
         <template v-if="!authStore.isLoggedIn">
           <router-link to="/login" class="mobile-link" @click="mobileOpen = false">登录</router-link>
           <router-link to="/register" class="mobile-link mobile-register" @click="mobileOpen = false">免费注册</router-link>
@@ -84,8 +97,10 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 
 const authStore = useAuthStore()
+const themeStore = useThemeStore()
 const router = useRouter()
 const isScrolled = ref(false)
 const mobileOpen = ref(false)
@@ -182,12 +197,12 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 }
 
 .nav-link:hover {
-  background: rgba(27,67,50,0.06);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
   color: var(--color-primary);
 }
 
 .nav-link.active {
-  background: rgba(27,67,50,0.08);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   color: var(--color-primary);
   font-weight: 500;
 }
@@ -330,6 +345,53 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 
 .mobile-divider { height: 1px; background: var(--border-light); margin: 8px 0; }
 .mobile-logout { color: #DC2626 !important; }
+
+.github-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  height: 34px;
+}
+.github-link:hover {
+  border-color: #e3b341;
+  color: #e3b341;
+  background: rgba(227, 179, 65, 0.08);
+}
+.github-text {
+  line-height: 1;
+}
+
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(82, 183, 136, 0.08);
+  transform: rotate(15deg);
+}
 
 .slide-down-enter-active, .slide-down-leave-active {
   transition: all 0.2s ease;

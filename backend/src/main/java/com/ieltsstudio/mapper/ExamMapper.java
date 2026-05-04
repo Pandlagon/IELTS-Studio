@@ -15,4 +15,7 @@ public interface ExamMapper extends BaseMapper<Exam> {
 
     @Select("SELECT * FROM exams WHERE deleted = 0 AND status = 'ready' ORDER BY created_at DESC LIMIT #{limit}")
     List<Exam> findPublicExams(int limit);
+
+    @Select("SELECT COUNT(*) FROM exams WHERE user_id = #{userId} AND title = #{title} AND deleted = 0")
+    int countByUserIdAndTitle(Long userId, String title);
 }

@@ -170,8 +170,80 @@
           </div>
         </div>
 
+        <!-- Spell Mode -->
+        <div v-else-if="wordStore.studyMode === 'spell' && !wordStore.loadingEntries && wordStore.totalWords > 0" class="spell-mode">
+          <div class="card-area">
+            <button class="nav-arrow left" @click="spellPrev">
+              <el-icon><ArrowLeft /></el-icon>
+            </button>
+
+            <div class="spell-card-wrap">
+              <div class="card-num-indicator">
+                {{ wordStore.currentIndex + 1 }} / {{ wordStore.totalWords }}
+              </div>
+              <div class="spell-card card">
+                <!-- POS badge -->
+                <div v-if="!spellMeaningGroups.some(g => g.pos) && wordStore.currentWord?.pos" class="spell-pos-row">
+                  <span class="pos-badge" :class="`pos-${wordStore.currentWord.posType}`">{{ wordStore.currentWord.pos }}</span>
+                </div>
+                <!-- Meaning -->
+                <div class="spell-meaning">
+                  <div v-for="(grp, i) in spellMeaningGroups" :key="i" class="spell-pos-group">
+                    <span v-if="grp.pos" class="pos-badge" :class="`pos-${grp.posType}`">{{ grp.pos }}</span>
+                    <span class="spell-senses">{{ grp.senses.join('；') }}</span>
+                  </div>
+                </div>
+                <!-- Audio replay button -->
+                <button class="spell-play-btn" @click="playWord(wordStore.currentWord.word)" title="再听一次">
+                  🔊 再听一次
+                </button>
+                <!-- Input area -->
+                <div class="spell-input-area">
+                  <input
+                    ref="spellInputRef"
+                    v-model="spellInput"
+                    class="spell-input"
+                    :class="{ correct: spellResult === 'correct', wrong: spellResult === 'wrong' }"
+                    placeholder="输入单词拼写..."
+                    :disabled="spellResult === 'correct'"
+                    @keydown.enter="checkSpell"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                  />
+                  <button v-if="!spellResult" class="btn-primary spell-check-btn" @click="checkSpell" :disabled="!spellInput.trim()">
+                    确认
+                  </button>
+                </div>
+                <button v-if="!spellResult" class="spell-reveal-btn" @click="revealSpell">
+                  显示答案
+                </button>
+                <!-- Result feedback -->
+                <div v-if="spellResult === 'correct'" class="spell-feedback correct">
+                  <span class="spell-feedback-icon">✓</span> 拼写正确！
+                </div>
+                <div v-else-if="spellResult === 'wrong'" class="spell-feedback wrong">
+                  <span class="spell-feedback-icon">✗</span> 正确拼写：<strong>{{ wordStore.currentWord.word }}</strong>
+                </div>
+                <!-- Next button after result -->
+                <button v-if="spellResult" class="btn-primary spell-next-btn" @click="spellNext">
+                  下一个 →
+                </button>
+              </div>
+            </div>
+
+            <button class="nav-arrow right" @click="spellNext">
+              <el-icon><ArrowRight /></el-icon>
+            </button>
+          </div>
+
+          <div class="keyboard-hint">
+            <span>Enter</span> 确认拼写 &nbsp;·&nbsp; <span>← →</span> 切换单词 &nbsp;·&nbsp; <span>🔊</span> 点击重播发音
+          </div>
+        </div>
+
         <!-- List Mode -->
-        <div v-else-if="wordStore.studyMode !== 'card' && !wordStore.loadingEntries && wordStore.totalWords > 0" class="list-mode">
+        <div v-else-if="wordStore.studyMode === 'list' && !wordStore.loadingEntries && wordStore.totalWords > 0" class="list-mode">
           <div class="list-controls">
             <input v-model="searchWord" class="form-input" placeholder="搜索单词..." style="max-width:240px" />
             <select v-model="filterStatus" class="form-input" style="max-width:140px">
@@ -189,7 +261,10 @@
             >
               <div class="word-row-left">
                 <div class="word-row-word">{{ word.word }}</div>
-                <div class="word-row-phonetic">{{ word.phonetic }}</div>
+                <div class="word-row-phonetic">
+                  {{ word.phonetic }}
+                  <button class="play-btn-sm" @click.stop="playWord(word.word)" title="播放发音">🔊</button>
+                </div>
               </div>
               <div class="word-row-center">
                 <span v-if="!parseMeaning(word.meaning).some(g => g.pos)" class="pos-badge" :class="`pos-${word.posType}`">{{ word.pos }}</span>
@@ -394,12 +469,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import NavBar from '@/components/NavBar.vue'
 import WordCard from '@/components/WordCard.vue'
 import { useWordStore } from '@/stores/word'
+import { playWord } from '@/utils/playWord'
 
 const router = useRouter()
 const wordStore = useWordStore()
@@ -422,6 +498,7 @@ function goToCloze() {
 
 const modes = [
   { value: 'card', label: '卡片', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/></svg>' },
+  { value: 'spell', label: '拼写', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>' },
   { value: 'list', label: '列表', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>' },
 ]
 
@@ -610,6 +687,71 @@ async function doUpload() {
   } catch (e) {
     ElMessage.error(e?.message || '上传失败，请重试')
   }
+}
+
+// ── spell mode ───────────────────────────────────────────
+const spellInput = ref('')
+const spellResult = ref(null) // null | 'correct' | 'wrong'
+const spellInputRef = ref()
+
+const spellMeaningGroups = computed(() => {
+  return parseMeaning(wordStore.currentWord?.meaning)
+})
+
+watch(() => wordStore.currentWord?.id, () => {
+  spellInput.value = ''
+  spellResult.value = null
+  if (wordStore.studyMode === 'spell' && wordStore.currentWord?.word) {
+    playWord(wordStore.currentWord.word)
+    nextTick(() => spellInputRef.value?.focus())
+  }
+})
+
+watch(() => wordStore.studyMode, (mode) => {
+  if (mode === 'spell') {
+    spellInput.value = ''
+    spellResult.value = null
+    if (wordStore.currentWord?.word) {
+      playWord(wordStore.currentWord.word)
+      nextTick(() => spellInputRef.value?.focus())
+    }
+  }
+})
+
+function checkSpell() {
+  if (!spellInput.value.trim() || spellResult.value) return
+  const answer = wordStore.currentWord?.word?.trim().toLowerCase()
+  const input = spellInput.value.trim().toLowerCase()
+  if (input === answer) {
+    spellResult.value = 'correct'
+    wordStore.markKnown({ id: wordStore.currentWord.id, reactionMs: 0 })
+  } else {
+    spellResult.value = 'wrong'
+    wordStore.markUnknown({ id: wordStore.currentWord.id, reactionMs: 0 })
+  }
+  playWord(wordStore.currentWord.word)
+}
+
+function revealSpell() {
+  if (spellResult.value) return
+  spellInput.value = wordStore.currentWord?.word || ''
+  spellResult.value = 'wrong'
+  wordStore.markUnknown({ id: wordStore.currentWord.id, reactionMs: 0 })
+  playWord(wordStore.currentWord.word)
+}
+
+function spellNext() {
+  spellInput.value = ''
+  spellResult.value = null
+  wordStore.nextWord()
+  nextTick(() => spellInputRef.value?.focus())
+}
+
+function spellPrev() {
+  spellInput.value = ''
+  spellResult.value = null
+  wordStore.prevWord()
+  nextTick(() => spellInputRef.value?.focus())
 }
 
 // ── study ─────────────────────────────────────────────────
@@ -894,6 +1036,148 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
+/* Spell Mode */
+.spell-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.spell-card-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.spell-card {
+  width: 380px;
+  min-width: 360px;
+  height: 420px;
+  padding: 40px 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.spell-pos-row {
+  text-align: center;
+}
+
+.spell-meaning {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.spell-pos-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spell-senses {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+  text-align: center;
+}
+
+.spell-play-btn {
+  align-self: center;
+  background: #F0F7F4;
+  border: 1.5px solid #D1E7DD;
+  color: #1B4332;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.spell-play-btn:hover {
+  background: #D1E7DD;
+  border-color: #1B4332;
+}
+
+.spell-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spell-input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Lora', var(--font-sans);
+  letter-spacing: 1px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.spell-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(27, 67, 50, 0.1); }
+.spell-input.correct { border-color: #22C55E; background: #F0FFF4; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12); }
+.spell-input.wrong { border-color: #EF4444; background: #FFF5F5; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); }
+
+.spell-reveal-btn {
+  align-self: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.spell-reveal-btn:hover { color: var(--color-primary); text-decoration: underline; }
+
+.spell-check-btn {
+  height: 46px;
+  padding: 0 20px;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.spell-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+}
+.spell-feedback.correct { background: #E8F5E9; color: #2E7D32; }
+.spell-feedback.wrong { background: #FFEBEE; color: #C62828; }
+
+.spell-feedback-icon { font-size: 18px; }
+
+.spell-next-btn {
+  align-self: stretch;
+  padding: 10px;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+}
+
 /* List Mode */
 .list-mode { display: flex; flex-direction: column; gap: 16px; }
 
@@ -910,7 +1194,12 @@ onUnmounted(() => {
 
 .word-row-left { width: 160px; flex-shrink: 0; }
 .word-row-word { font-size: 16px; font-weight: 700; color: var(--text-primary); }
-.word-row-phonetic { font-size: 11px; color: var(--text-muted); font-style: italic; }
+.word-row-phonetic { font-size: 11px; color: var(--text-muted); font-style: italic; display: flex; align-items: center; gap: 4px; }
+.play-btn-sm {
+  background: none; border: none; cursor: pointer; font-size: 11px;
+  padding: 1px 3px; border-radius: 3px; opacity: 0.4; transition: opacity 0.15s, transform 0.15s; line-height: 1;
+}
+.play-btn-sm:hover { opacity: 1; transform: scale(1.15); }
 
 .word-row-center { flex: 1; display: flex; align-items: center; gap: 10px; }
 .word-row-meaning { font-size: 14px; color: var(--text-secondary); }

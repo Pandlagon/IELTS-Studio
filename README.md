@@ -2,7 +2,7 @@
 
 > **IELTS Studio** 是一款专为雅思考生打造的**全流程机考模拟平台**。支持将 PDF、Word 或图片格式的试卷通过 AI 一键转化为可交互的网页机考界面，涵盖阅读、写作、完形填空等多种题型，并提供 AI 写作批改、智能翻译、AI 助手问答、单词管理等功能，助你高效备考。
 >
-> **🌐 在线体验：** [http://www.lainpeter.top:8888](http://www.lainpeter.top:8888)
+> **🌐 在线体验：** [http://www.lainpeter.top](http://www.lainpeter.top)
 >
 > **⭐ 如果觉得有用，请给个 Star 支持一下！**
 > *(网站还在持续更新中，更多功能敬请期待下一次更新)*
@@ -402,6 +402,6 @@ mvn clean package         # 打包为 jar
 
 ---
 
-## License
+本项目仅供学习与个人开发使用，请勿用于商业目的。
+# IELTS-Studio
 
-本项目采用 MIT 许可证，仅供学习与个人使用。

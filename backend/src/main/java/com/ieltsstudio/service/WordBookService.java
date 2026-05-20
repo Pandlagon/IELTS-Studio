@@ -66,6 +66,11 @@ public class WordBookService {
         return wordEntryMapper.findByBookId(bookId);
     }
 
+    public boolean existsForUser(Long userId, Long bookId) {
+        WordBook book = wordBookMapper.selectById(bookId);
+        return book != null && book.getUserId().equals(userId);
+    }
+
     public boolean deleteEntry(Long userId, Long entryId) {
         WordEntry entry = wordEntryMapper.selectById(entryId);
         if (entry == null || !entry.getUserId().equals(userId)) return false;

@@ -263,7 +263,7 @@
                         {{ q.answer }}
                       </span>
                     </div>
-                    <p v-if="!q.isCorrect" class="review-explanation">
+                    <p v-if="q.explanation" class="review-explanation">
                       <el-icon><InfoFilled /></el-icon>
                       {{ q.explanation }}
                     </p>
@@ -388,7 +388,7 @@
                       {{ q.answer }}
                     </span>
                   </div>
-                  <p v-if="!q.isCorrect" class="review-explanation">
+                  <p v-if="q.explanation" class="review-explanation">
                     <el-icon><InfoFilled /></el-icon>
                     {{ q.explanation }}
                   </p>

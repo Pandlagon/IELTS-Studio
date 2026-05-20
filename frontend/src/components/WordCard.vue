@@ -4,7 +4,7 @@
       {{ word.phonetic }}
       <button class="play-btn" @click.stop="playWord(word.word)" title="播放发音">🔊</button>
     </div>
-    <div class="word-text">{{ word.word }}</div>
+    <div class="word-text" :class="wordTextSizeClass">{{ word.word }}</div>
     <div v-if="!hasPosGroups && !meaningRevealed" class="pos-badge" :class="`pos-${word.posType}`">{{ word.pos }}</div>
     
     <!-- Meaning section - hidden initially -->
@@ -79,6 +79,14 @@ const meaningGroups = computed(() => {
     }
     return { pos: '', posType: '', senses: g.split('；').map(s => s.trim()).filter(Boolean) }
   }).filter(g => g.senses.length > 0)
+})
+
+const wordTextSizeClass = computed(() => {
+  const len = props.word?.word?.length || 0
+  if (len >= 16) return 'size-xs'
+  if (len >= 13) return 'size-sm'
+  if (len >= 10) return 'size-md'
+  return ''
 })
 
 const emit = defineEmits(['know', 'unknown'])
@@ -216,7 +224,14 @@ onUnmounted(() => {
   margin-bottom: 12px;
   font-family: 'Lora', var(--font-sans);
   letter-spacing: -1px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+
+.word-text.size-md { font-size: 40px; }
+.word-text.size-sm { font-size: 34px; }
+.word-text.size-xs { font-size: 28px; line-height: 1.15; }
 
 .pos-badge {
   display: inline-flex;

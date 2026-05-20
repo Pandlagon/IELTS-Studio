@@ -191,9 +191,7 @@ public class ExamService {
         for (Question q : questions) {
             boolean isWrite = "write".equals(q.getType());
             String rawUserAnswer = userAnswers.getOrDefault(q.getId(), "");
-            String userAnswer = rawUserAnswer.trim().toUpperCase();
-            String correctAnswer = q.getAnswer().trim().toUpperCase();
-            boolean isCorrect = !isWrite && userAnswer.equals(correctAnswer);
+            boolean isCorrect = !isWrite && answersMatch(rawUserAnswer, q.getAnswer());
 
             // 写作题不计入客观得分
             if (!isWrite) {
@@ -306,7 +304,7 @@ public class ExamService {
         for (Question q : questions) {
             boolean isWrite = "write".equals(q.getType());
             String userAnswer = savedAnswers.getOrDefault(q.getId(), "");
-            boolean isCorrect = !isWrite && userAnswer.trim().toUpperCase().equals(q.getAnswer().trim().toUpperCase());
+            boolean isCorrect = !isWrite && answersMatch(userAnswer, q.getAnswer());
 
             Map<String, Object> qr = new HashMap<>();
             qr.put("id", q.getId());
@@ -438,5 +436,20 @@ public class ExamService {
         if (ratio >= 0.400) return 5.0;
         if (ratio >= 0.325) return 4.5;
         return 4.0;
+    }
+
+    private boolean answersMatch(String userAnswer, String correctAnswer) {
+        return normalizeAnswer(userAnswer).equals(normalizeAnswer(correctAnswer));
+    }
+
+    private String normalizeAnswer(String answer) {
+        if (answer == null) return "";
+        String normalized = answer.trim().toUpperCase().replaceAll("\\s+", " ");
+        return switch (normalized) {
+            case "YES", "TRUE" -> "TRUE";
+            case "NO", "FALSE" -> "FALSE";
+            case "NOT GIVEN", "NOTGIVEN", "NG" -> "NOT GIVEN";
+            default -> normalized;
+        };
     }
 }

@@ -552,10 +552,21 @@ export const useExamStore = defineStore('exam', () => {
       if (q.type === 'write') {
         return { ...q, userAnswer: currentAnswers.value[q.id] || '', isCorrect: false, isWrite: true }
       }
-      const userAnswer = (currentAnswers.value[q.id] || '').toString().trim().toUpperCase()
-      const correct = q.answer.toString().trim().toUpperCase()
-      return { ...q, userAnswer: currentAnswers.value[q.id] || '', isCorrect: userAnswer === correct }
+      const userAnswer = currentAnswers.value[q.id] || ''
+      return { ...q, userAnswer, isCorrect: answersMatch(userAnswer, q.answer) }
     })
+  }
+
+  function answersMatch(userAnswer, correctAnswer) {
+    return normalizeAnswer(userAnswer) === normalizeAnswer(correctAnswer)
+  }
+
+  function normalizeAnswer(answer) {
+    const normalized = (answer || '').toString().trim().toUpperCase().replace(/\s+/g, ' ')
+    if (normalized === 'YES' || normalized === 'TRUE') return 'TRUE'
+    if (normalized === 'NO' || normalized === 'FALSE') return 'FALSE'
+    if (normalized === 'NOT GIVEN' || normalized === 'NOTGIVEN' || normalized === 'NG') return 'NOT GIVEN'
+    return normalized
   }
 
   function getBandScore(correct, total) {

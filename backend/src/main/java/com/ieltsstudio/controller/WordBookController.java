@@ -174,6 +174,18 @@ public class WordBookController {
         return Result.success(Map.of("status", "processing", "count", words.size()));
     }
 
+    @PostMapping("/books/{id}/quick-add")
+    public Result<?> quickAddWordsToBook(@PathVariable Long id,
+                                         @RequestBody Map<String, Object> body,
+                                         @AuthenticationPrincipal AuthUser authUser) {
+        if (!wordBookService.existsForUser(authUser.getId(), id)) return Result.notFound("词书不存在");
+        @SuppressWarnings("unchecked")
+        List<String> words = (List<String>) body.get("words");
+        if (words == null || words.isEmpty()) return Result.error("单词列表不能为空");
+        asyncWordService.quickAddWords(authUser.getId(), id, words);
+        return Result.success(Map.of("status", "processing", "count", words.size()));
+    }
+
     // ─── 完形填空练习 ─────────────────────────────────────────────────────────────────
 
     /**

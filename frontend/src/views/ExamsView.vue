@@ -267,7 +267,7 @@
               @click="activeTab = tab.value"
             >
               {{ tab.label }}
-              <span class="tab-count">{{ getTabCount(tab.value) }}</span>
+              <span v-if="getTabCount(tab.value) !== null" class="tab-count">{{ getTabCount(tab.value) }}</span>
             </button>
           </div>
           <div class="search-box">
@@ -398,6 +398,7 @@ const fileInputRef = ref()
 const uploadFiles = ref([])
 const searchQ = ref('')
 const activeTab = ref('all')
+const tabCounts = ref({ all: 0, reading: null, listening: null, writing: null })
 
 const uploadForm = ref({ title: '', type: 'reading', duration: 60, description: '', parsePrecise: false })
 const uploadTitleDup = ref(false)
@@ -429,6 +430,7 @@ async function fetchExams() {
   if (!token || token.startsWith('mock_token_')) {
     pagedExams.value = examStore.exams
     examTotal.value = examStore.exams.length
+    updateMockTabCounts()
     return
   }
   loadingExams.value = true
@@ -453,8 +455,40 @@ async function fetchExams() {
       sections: [],
     }))
     examTotal.value = data.total || 0
+    tabCounts.value[activeTab.value] = examTotal.value
   } catch { /* ignore */ }
   loadingExams.value = false
+}
+
+async function fetchTabCounts() {
+  const token = localStorage.getItem('ielts_token') || ''
+  if (!token || token.startsWith('mock_token_')) {
+    updateMockTabCounts()
+    return
+  }
+  const nextCounts = { ...tabCounts.value }
+  await Promise.all(tabs.map(async tab => {
+    try {
+      const params = { page: 1, size: 1 }
+      if (tab.value !== 'all') params.type = tab.value
+      if (searchQ.value.trim()) params.search = searchQ.value.trim()
+      const res = await request.get('/exams', { params })
+      nextCounts[tab.value] = res.data?.total || 0
+    } catch {
+      nextCounts[tab.value] = null
+    }
+  }))
+  tabCounts.value = nextCounts
+}
+
+function updateMockTabCounts() {
+  const source = examStore.exams || []
+  tabCounts.value = {
+    all: source.length,
+    reading: source.filter(e => e.type === 'reading').length,
+    listening: source.filter(e => e.type === 'listening').length,
+    writing: source.filter(e => e.type === 'writing').length,
+  }
 }
 
 // Re-fetch when page changes (only if not triggered by tab/search reset)
@@ -463,17 +497,17 @@ watch(examPage, () => { if (!skipPageWatch) fetchExams() })
 watch(activeTab, () => { skipPageWatch = true; examPage.value = 1; skipPageWatch = false; fetchExams() })
 watch(searchQ, () => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { skipPageWatch = true; examPage.value = 1; skipPageWatch = false; fetchExams() }, 300)
+  searchTimer = setTimeout(() => { skipPageWatch = true; examPage.value = 1; skipPageWatch = false; fetchExams(); fetchTabCounts() }, 300)
 })
 
 onMounted(async () => {
   await fetchExams()
   await examStore.loadExams()
+  await fetchTabCounts()
 })
 
 function getTabCount(tab) {
-  if (tab === 'all') return examTotal.value
-  return '·'
+  return tabCounts.value[tab]
 }
 
 function typeLabel(type) {
@@ -587,6 +621,7 @@ async function handleUpload() {
     uploadForm.value = { title: '', type: 'reading', duration: 60, description: '', parsePrecise: false }
     ElMessage.success('上传成功，正在后台解析，请稍候...')
     await fetchExams()
+    await fetchTabCounts()
     pollExamStatus(examId)
   } catch (e) {
     const msg = e?.message || '上传失败'
@@ -614,6 +649,7 @@ function pollExamStatus(examId) {
         ElMessage.success(`「${exam.title}」解析完成，共 ${(qRes.data || []).length} 道题`)
         await fetchExams()
         await examStore.loadExams()
+        await fetchTabCounts()
       } else if (exam.status === 'error' || attempts >= 60) {
         clearInterval(timer)
         examStore.markExamError(examId)
@@ -636,6 +672,7 @@ async function doDeleteExam(id) {
   confirmDeleteId.value = null
   ElMessage.success('试卷已删除')
   await fetchExams()
+  await fetchTabCounts()
 }
 
 // ── Collection management ──────────────────────────────────────────────

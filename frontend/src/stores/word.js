@@ -116,6 +116,11 @@ const IELTS_WORDS = [
 // Built-in IELTS book (no backend needed)
 const BUILTIN_BOOK = { id: 'builtin', name: '雅思核心词汇', description: '20个雅思高频词汇', isDefault: 0, wordCount: IELTS_WORDS.length, isBuiltin: true }
 
+function nextAfterCurrent(candidates, base, currentId) {
+  const baseIndex = base.findIndex(w => w.id === currentId)
+  return candidates.find(w => base.findIndex(item => item.id === w.id) > baseIndex) || candidates[0]
+}
+
 export const useWordStore = defineStore('word', () => {
   // ── book management ──────────────────────────────────
   const books = ref([BUILTIN_BOOK])
@@ -235,6 +240,7 @@ export const useWordStore = defineStore('word', () => {
   const currentIndex = ref(0)
   const studyMode = ref('card')
   const focusUnknownOnly = ref(false)
+  const spellCorrectStreaks = ref({})
 
   // Per-book known/unknown sets stored in localStorage
   function _storeKey(bookId, type) { return `ielts_${type}_${bookId}` }
@@ -369,7 +375,9 @@ export const useWordStore = defineStore('word', () => {
 
   async function deleteEntry(entryId) {
     await request.delete(`/words/entries/${entryId}`)
-    bookEntries.value = bookEntries.value.filter(e => e.id !== entryId)
+    const entryIdx = bookEntries.value.findIndex(e => e.id === entryId)
+    if (entryIdx !== -1) bookEntries.value.splice(entryIdx, 1)
+    if (currentIndex.value >= bookEntries.value.length) currentIndex.value = Math.max(0, bookEntries.value.length - 1)
     const idx = books.value.findIndex(b => b.id === currentBookId.value)
     if (idx !== -1) books.value[idx] = { ...books.value[idx], wordCount: bookEntries.value.length }
   }
@@ -384,7 +392,21 @@ export const useWordStore = defineStore('word', () => {
 
   async function quickAddWords(words) {
     if (!words || words.length === 0) return
-    const res = await request.post('/words/books/default/quick-add', { words })
+    const targetBookId = currentBookId.value === 'builtin' ? 'default' : currentBookId.value
+    const res = await request.post(`/words/books/${targetBookId}/quick-add`, { words })
+    return res.data
+  }
+
+  async function addManualWord(entry) {
+    const res = await request.post('/words/books/default/entries', entry)
+    const defaultIdx = books.value.findIndex(b => b.isDefault)
+    if (defaultIdx !== -1) {
+      books.value[defaultIdx] = { ...books.value[defaultIdx], wordCount: (books.value[defaultIdx].wordCount || 0) + 1 }
+    }
+    if (currentBook.value?.isDefault) {
+      bookEntries.value.unshift(res.data)
+      currentIndex.value = 0
+    }
     return res.data
   }
 
@@ -472,28 +494,34 @@ export const useWordStore = defineStore('word', () => {
   function markKnown(payload) {
     const wordId = typeof payload === 'object' ? payload.id : payload
     const reactionMs = typeof payload === 'object' ? payload.reactionMs : 0
+    const autoNext = typeof payload === 'object' ? payload.autoNext !== false : true
+    const checkBatch = typeof payload === 'object' ? payload.checkBatch !== false : true
     knownIds.value.add(wordId)
     unknownIds.value.delete(wordId)
     _updateReviewSchedule(wordId, true, reactionMs)
     _saveProgress()
-    if (focusUnknownOnly.value && currentBatchUnknownCount.value === 0) {
-      focusUnknownOnly.value = false
-    }
-    _checkBatchComplete()
-    nextWord()
+    if (checkBatch) _checkBatchComplete()
+    if (autoNext) nextWord()
   }
 
   function markUnknown(payload) {
     const wordId = typeof payload === 'object' ? payload.id : payload
     const reactionMs = typeof payload === 'object' ? payload.reactionMs : 0
+    const autoNext = typeof payload === 'object' ? payload.autoNext !== false : true
+    const checkBatch = typeof payload === 'object' ? payload.checkBatch !== false : true
     unknownIds.value.add(wordId)
     knownIds.value.delete(wordId)
+    spellCorrectStreaks.value = { ...spellCorrectStreaks.value, [wordId]: 0 }
     errorCounts.value = { ...errorCounts.value, [wordId]: (errorCounts.value[wordId] || 0) + 1 }
     _saveErrorCounts()
     _updateReviewSchedule(wordId, false, reactionMs)
     _saveProgress()
-    _checkBatchComplete()
-    nextWord()
+    if (checkBatch) _checkBatchComplete()
+    if (autoNext) nextWord()
+  }
+
+  function markSpellIncorrect(payload) {
+    markUnknown({ ...payload, autoNext: false, checkBatch: false })
   }
 
   function _checkBatchComplete() {
@@ -523,6 +551,49 @@ export const useWordStore = defineStore('word', () => {
     currentIndex.value = currentIndex.value < displayWords.value.length - 1 ? currentIndex.value + 1 : 0
   }
 
+  function nextSpellWord(currentId) {
+    const base = baseDisplayWords.value
+    const unlearned = base.filter(w => !knownIds.value.has(w.id) && !unknownIds.value.has(w.id))
+    const unknown = base.filter(w => unknownIds.value.has(w.id))
+    const currentBaseIndex = base.findIndex(w => w.id === currentId)
+    const shouldReviewUnknown = unlearned.length > 0 && unknown.length > 0 && (currentBaseIndex + 1) % 3 === 0
+    const candidates = shouldReviewUnknown ? unknown : (unlearned.length ? unlearned : unknown)
+
+    if (!candidates.length) {
+      focusUnknownOnly.value = false
+      currentIndex.value = 0
+      batchCompleteCallback.value?.()
+      return
+    }
+
+    focusUnknownOnly.value = unlearned.length === 0
+    const target = nextAfterCurrent(candidates, base, currentId)
+    const displayIndex = displayWords.value.findIndex(w => w.id === target.id)
+    currentIndex.value = displayIndex >= 0 ? displayIndex : 0
+  }
+
+  function markSpellCorrect(payload) {
+    const wordId = typeof payload === 'object' ? payload.id : payload
+    const reactionMs = typeof payload === 'object' ? payload.reactionMs : 0
+
+    if (unknownIds.value.has(wordId)) {
+      const nextStreak = (spellCorrectStreaks.value[wordId] || 0) + 1
+      spellCorrectStreaks.value = { ...spellCorrectStreaks.value, [wordId]: nextStreak }
+      if (nextStreak < 2) {
+        _updateReviewSchedule(wordId, true, reactionMs)
+        _saveProgress()
+        return
+      }
+    }
+
+    markKnown({ id: wordId, reactionMs, autoNext: false, checkBatch: false })
+    if (spellCorrectStreaks.value[wordId]) {
+      const next = { ...spellCorrectStreaks.value }
+      delete next[wordId]
+      spellCorrectStreaks.value = next
+    }
+  }
+
   function prevWord() {
     currentIndex.value = currentIndex.value > 0 ? currentIndex.value - 1 : displayWords.value.length - 1
   }
@@ -531,6 +602,7 @@ export const useWordStore = defineStore('word', () => {
     knownIds.value = new Set()
     unknownIds.value = new Set()
     focusUnknownOnly.value = false
+    spellCorrectStreaks.value = {}
     reviewStates.value = {}
     currentIndex.value = 0
     batchIndex.value = 0
@@ -590,8 +662,9 @@ export const useWordStore = defineStore('word', () => {
     sortMode, batchSize, batchIndex, totalBatches, errorCounts, canGoNextBatch,
     books, currentBookId, currentBook, loadingBooks, loadingEntries, uploadingWords,
     bookEntries,
-    loadBooks, createBook, deleteBook, loadEntries, uploadWords, deleteEntry, updateEntry, addToDefaultBook, quickAddWords, switchBook,
-    markKnown, markUnknown, nextWord, prevWord, resetProgress,
+    loadBooks, createBook, deleteBook, loadEntries, uploadWords, deleteEntry, updateEntry, addManualWord,
+    addToDefaultBook, quickAddWords, switchBook,
+    markKnown, markUnknown, markSpellCorrect, markSpellIncorrect, nextWord, nextSpellWord, prevWord, resetProgress,
     setSortMode, setBatchSize, nextBatch, prevBatch,
     isKnown, isUnknown, getReviewState,
     batchCompleteCallback,

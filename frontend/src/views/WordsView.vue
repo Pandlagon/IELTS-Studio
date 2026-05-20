@@ -181,7 +181,26 @@
               <div class="card-num-indicator">
                 {{ wordStore.currentIndex + 1 }} / {{ wordStore.totalWords }}
               </div>
-              <div class="spell-card card">
+              <div v-if="spellResult === 'correct' || spellResult === 'revealed'" class="spell-answer-card card">
+                <div v-if="activeSpellWord?.phonetic" class="spell-answer-phonetic">
+                  {{ activeSpellWord.phonetic }}
+                  <button class="play-btn-sm" @click="playWord(activeSpellWord.word)" title="播放发音">🔊</button>
+                </div>
+                <div class="spell-answer-word" :class="spellAnswerWordSizeClass">{{ activeSpellWord.word }}</div>
+                <div class="spell-answer-meaning-block">
+                  <div v-for="(grp, i) in spellMeaningGroups" :key="i" class="spell-pos-group">
+                    <span v-if="grp.pos" class="pos-badge" :class="`pos-${grp.posType}`">{{ grp.pos }}</span>
+                    <span class="spell-senses">{{ grp.senses.join('；') }}</span>
+                  </div>
+                </div>
+                <div v-if="activeSpellWord?.example" class="spell-answer-example">
+                  "{{ activeSpellWord.example }}"
+                </div>
+                <button class="btn-primary spell-next-btn" @click="spellNext">
+                  → 下一个
+                </button>
+              </div>
+              <div v-else class="spell-card card">
                 <!-- POS badge -->
                 <div v-if="!spellMeaningGroups.some(g => g.pos) && wordStore.currentWord?.pos" class="spell-pos-row">
                   <span class="pos-badge" :class="`pos-${wordStore.currentWord.posType}`">{{ wordStore.currentWord.pos }}</span>
@@ -199,35 +218,27 @@
                 </button>
                 <!-- Input area -->
                 <div class="spell-input-area">
-                  <input
-                    ref="spellInputRef"
-                    v-model="spellInput"
-                    class="spell-input"
-                    :class="{ correct: spellResult === 'correct', wrong: spellResult === 'wrong' }"
-                    placeholder="输入单词拼写..."
-                    :disabled="spellResult === 'correct'"
-                    @keydown.enter="checkSpell"
-                    autocomplete="off"
-                    autocapitalize="off"
-                    spellcheck="false"
-                  />
-                  <button v-if="!spellResult" class="btn-primary spell-check-btn" @click="checkSpell" :disabled="!spellInput.trim()">
+                  <div class="spell-input-wrap">
+                    <div v-if="spellResult === 'wrong'" class="spell-error-hint">拼写错误</div>
+                    <input
+                      ref="spellInputRef"
+                      v-model="spellInput"
+                      class="spell-input"
+                      :class="{ correct: spellResult === 'correct', wrong: spellResult === 'wrong' }"
+                      placeholder="输入单词拼写..."
+                      :disabled="spellResult === 'correct'"
+                      @keydown.stop="handleSpellInputKeydown"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                    />
+                  </div>
+                  <button v-if="spellResult !== 'correct' && spellResult !== 'revealed'" class="btn-primary spell-check-btn" @click="checkSpell" :disabled="!spellInput.trim()">
                     确认
                   </button>
                 </div>
-                <button v-if="!spellResult" class="spell-reveal-btn" @click="revealSpell">
+                <button v-if="spellResult !== 'correct' && spellResult !== 'revealed'" class="spell-reveal-btn" @click="revealSpell">
                   显示答案
-                </button>
-                <!-- Result feedback -->
-                <div v-if="spellResult === 'correct'" class="spell-feedback correct">
-                  <span class="spell-feedback-icon">✓</span> 拼写正确！
-                </div>
-                <div v-else-if="spellResult === 'wrong'" class="spell-feedback wrong">
-                  <span class="spell-feedback-icon">✗</span> 正确拼写：<strong>{{ wordStore.currentWord.word }}</strong>
-                </div>
-                <!-- Next button after result -->
-                <button v-if="spellResult" class="btn-primary spell-next-btn" @click="spellNext">
-                  下一个 →
                 </button>
               </div>
             </div>
@@ -238,7 +249,7 @@
           </div>
 
           <div class="keyboard-hint">
-            <span>Enter</span> 确认拼写 &nbsp;·&nbsp; <span>← →</span> 切换单词 &nbsp;·&nbsp; <span>🔊</span> 点击重播发音
+            <span>Enter</span> 确认拼写 &nbsp;·&nbsp; <span>← →</span> 切换单词 &nbsp;·&nbsp; <span>F2</span> 重播发音
           </div>
         </div>
 
@@ -439,9 +450,21 @@
     <div class="upload-tip">
       <el-alert type="info" :closable="false" show-icon>
         <template #title>
-          每次上传最多 <strong>30 个词汇</strong>，AI 将自动提取并生成词条（音标、词性、释义、例句）。支持 PDF 和 Word 文件。
+          每次最多 <strong>30 个词汇</strong>，可直接输入单词，也可上传 PDF / Word 文件，AI 将自动生成词条（音标、词性、释义、例句）。
         </template>
       </el-alert>
+    </div>
+    <el-input
+      v-model="quickWordsText"
+      type="textarea"
+      :rows="5"
+      maxlength="500"
+      show-word-limit
+      placeholder="直接输入要添加的单词，支持空格、逗号或换行分隔，例如：&#10;innovation&#10;academic vocabulary&#10;environment, sustainable, policy"
+      class="quick-words-input"
+    />
+    <div class="upload-separator">
+      <span>或上传文件</span>
     </div>
     <div class="upload-drop-area" @dragover.prevent @drop.prevent="onFileDrop">
       <input ref="fileInputRef" type="file" accept=".pdf,.doc,.docx" style="display:none" @change="onFileSelect" />
@@ -460,8 +483,8 @@
       </div>
     </div>
     <template #footer>
-      <el-button @click="showUpload = false; uploadFile = null">取消</el-button>
-      <el-button type="primary" :loading="wordStore.uploadingWords" :disabled="!uploadFile" @click="doUpload">
+      <el-button @click="showUpload = false; uploadFile = null; quickWordsText = ''">取消</el-button>
+      <el-button type="primary" :loading="wordStore.uploadingWords || quickAddingWords" :disabled="!uploadFile && !quickWordsText.trim()" @click="doUpload">
         开始处理
       </el-button>
     </template>
@@ -490,6 +513,8 @@ const showUpload = ref(false)
 const creatingBook = ref(false)
 const createBookForm = ref({ name: '', desc: '' })
 const uploadFile = ref(null)
+const quickWordsText = ref('')
+const quickAddingWords = ref(false)
 const fileInputRef = ref()
 
 function goToCloze() {
@@ -677,30 +702,103 @@ function onFileDrop(e) {
 }
 
 async function doUpload() {
+  const quickWords = parseQuickWords(quickWordsText.value)
+  if (quickWords.length) {
+    if (quickWords.length > 30) {
+      ElMessage.warning('每次最多添加 30 个单词')
+      return
+    }
+    quickAddingWords.value = true
+    try {
+      const shouldSwitchToDefault = wordStore.currentBookId === 'builtin'
+      await wordStore.quickAddWords(quickWords)
+      showUpload.value = false
+      uploadFile.value = null
+      quickWordsText.value = ''
+      ElMessage.info({ message: `已提交 ${quickWords.length} 个单词，AI 正在生成词条`, duration: 4000 })
+      setTimeout(async () => {
+        await wordStore.loadBooks()
+        if (shouldSwitchToDefault) {
+          const defaultBook = wordStore.books.find(book => book.isDefault)
+          if (defaultBook) wordStore.switchBook(defaultBook.id)
+        }
+      }, 1500)
+    } catch (e) {
+      ElMessage.error(e?.response?.data?.message || '添加失败，请重试')
+    } finally {
+      quickAddingWords.value = false
+    }
+    return
+  }
   if (!uploadFile.value) return
   try {
-    await wordStore.uploadWords(wordStore.currentBookId, uploadFile.value)
+    const shouldSwitchToDefault = wordStore.currentBookId === 'builtin'
+    const targetBookId = shouldSwitchToDefault
+      ? (wordStore.books.find(book => book.isDefault)?.id || 'default')
+      : wordStore.currentBookId
+    await wordStore.uploadWords(targetBookId, uploadFile.value)
     // Close immediately — AI processes in background
     showUpload.value = false
     uploadFile.value = null
+    quickWordsText.value = ''
     ElMessage.info({ message: 'AI 处理中，完成后自动刷新词书', duration: 4000 })
+    if (shouldSwitchToDefault) {
+      setTimeout(async () => {
+        await wordStore.loadBooks()
+        const defaultBook = wordStore.books.find(book => book.isDefault)
+        if (defaultBook) wordStore.switchBook(defaultBook.id)
+      }, 1500)
+    }
   } catch (e) {
     ElMessage.error(e?.message || '上传失败，请重试')
   }
 }
 
+function parseQuickWords(text) {
+  return String(text || '')
+    .split(/[\n,，；、]+/)
+    .map(item => item.trim())
+    .flatMap(item => {
+      if (!item) return []
+      if (item.includes(' ')) {
+        const parts = item.split(/\s+/).map(v => v.trim()).filter(Boolean)
+        return parts.length > 1 && parts.every(v => /^[A-Za-z-]+$/.test(v)) ? parts : [item]
+      }
+      return [item]
+    })
+    .filter(Boolean)
+}
+
 // ── spell mode ───────────────────────────────────────────
 const spellInput = ref('')
-const spellResult = ref(null) // null | 'correct' | 'wrong'
+const spellResult = ref(null) // null | 'correct' | 'wrong' | 'revealed'
 const spellInputRef = ref()
+const answeredSpellWord = ref(null)
+const skipNextSpellAutoPlay = ref(false)
+
+const activeSpellWord = computed(() => answeredSpellWord.value || wordStore.currentWord)
+
+const spellAnswerWordSizeClass = computed(() => {
+  const len = activeSpellWord.value?.word?.length || 0
+  if (len >= 14) return 'size-xs'
+  if (len >= 11) return 'size-sm'
+  if (len >= 8) return 'size-md'
+  return ''
+})
 
 const spellMeaningGroups = computed(() => {
-  return parseMeaning(wordStore.currentWord?.meaning)
+  return parseMeaning(activeSpellWord.value?.meaning)
 })
 
 watch(() => wordStore.currentWord?.id, () => {
+  if (answeredSpellWord.value) return
   spellInput.value = ''
   spellResult.value = null
+  answeredSpellWord.value = null
+  if (skipNextSpellAutoPlay.value) {
+    skipNextSpellAutoPlay.value = false
+    return
+  }
   if (wordStore.studyMode === 'spell' && wordStore.currentWord?.word) {
     playWord(wordStore.currentWord.word)
     nextTick(() => spellInputRef.value?.focus())
@@ -719,31 +817,52 @@ watch(() => wordStore.studyMode, (mode) => {
 })
 
 function checkSpell() {
-  if (!spellInput.value.trim() || spellResult.value) return
-  const answer = wordStore.currentWord?.word?.trim().toLowerCase()
+  if (!spellInput.value.trim() || spellResult.value === 'correct' || spellResult.value === 'revealed') return
+  const currentWord = wordStore.currentWord
+  answeredSpellWord.value = currentWord
+  const answer = currentWord?.word?.trim().toLowerCase()
   const input = spellInput.value.trim().toLowerCase()
-  if (input === answer) {
-    spellResult.value = 'correct'
-    wordStore.markKnown({ id: wordStore.currentWord.id, reactionMs: 0 })
-  } else {
-    spellResult.value = 'wrong'
-    wordStore.markUnknown({ id: wordStore.currentWord.id, reactionMs: 0 })
-  }
-  playWord(wordStore.currentWord.word)
+  const isCorrect = input === answer
+  spellResult.value = isCorrect ? 'correct' : 'wrong'
+  playWord(currentWord.word)
+  if (isCorrect) nextTick(() => spellInputRef.value?.blur())
+  nextTick(() => {
+    if (isCorrect) wordStore.markSpellCorrect({ id: currentWord.id, reactionMs: 0 })
+    else wordStore.markSpellIncorrect({ id: currentWord.id, reactionMs: 0 })
+  })
 }
 
 function revealSpell() {
-  if (spellResult.value) return
-  spellInput.value = wordStore.currentWord?.word || ''
-  spellResult.value = 'wrong'
-  wordStore.markUnknown({ id: wordStore.currentWord.id, reactionMs: 0 })
-  playWord(wordStore.currentWord.word)
+  if (spellResult.value === 'correct' || spellResult.value === 'revealed') return
+  const currentWord = wordStore.currentWord
+  answeredSpellWord.value = currentWord
+  spellInput.value = currentWord?.word || ''
+  spellResult.value = 'revealed'
+  playWord(currentWord.word)
+  nextTick(() => spellInputRef.value?.blur())
+  nextTick(() => wordStore.markSpellIncorrect({ id: currentWord.id, reactionMs: 0 }))
+}
+
+function handleSpellEnter() {
+  if (spellResult.value === 'correct' || spellResult.value === 'revealed') spellNext()
+  else checkSpell()
+}
+
+function handleSpellInputKeydown(e) {
+  if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return
+  e.preventDefault()
+  if (e.isComposing) return
+  handleSpellEnter()
 }
 
 function spellNext() {
+  const currentId = activeSpellWord.value?.id
   spellInput.value = ''
   spellResult.value = null
-  wordStore.nextWord()
+  answeredSpellWord.value = null
+  skipNextSpellAutoPlay.value = true
+  wordStore.nextSpellWord(currentId)
+  if (wordStore.currentWord?.word) playWord(wordStore.currentWord.word)
   nextTick(() => spellInputRef.value?.focus())
 }
 
@@ -756,11 +875,22 @@ function spellPrev() {
 
 // ── study ─────────────────────────────────────────────────
 function handleKeydown(e) {
-  if (wordStore.studyMode !== 'card') return
   if (e.ctrlKey || e.metaKey || e.altKey) return
   const target = e.target
   const tag = target?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return
+  const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable
+  if (wordStore.studyMode === 'spell') {
+    if (e.key === 'F2' && wordStore.currentWord?.word) {
+      e.preventDefault()
+      playWord(wordStore.currentWord.word)
+    }
+    if (e.key === 'Enter' && (spellResult.value === 'correct' || spellResult.value === 'revealed')) {
+      e.preventDefault()
+      spellNext()
+    }
+    return
+  }
+  if (wordStore.studyMode !== 'card' || isTyping) return
   if (e.key === 'ArrowLeft') wordStore.prevWord()
   else if (e.key === 'ArrowRight') wordStore.nextWord()
   // Note: ArrowUp/ArrowDown for know/unknown are now handled by the WordCard component
@@ -1117,8 +1247,27 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.spell-input {
+.spell-input-wrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.spell-error-hint {
+  position: absolute;
+  left: 12px;
+  top: -18px;
+  color: #DC2626;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+.spell-input {
+  width: 100%;
   min-width: 0;
   height: 46px;
   padding: 0 14px;
@@ -1171,11 +1320,79 @@ onUnmounted(() => {
 
 .spell-feedback-icon { font-size: 18px; }
 
+.spell-answer-card {
+  width: 460px;
+  min-width: 420px;
+  min-height: 520px;
+  padding: 44px 48px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.spell-answer-phonetic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-style: italic;
+  margin-bottom: 12px;
+}
+
+.spell-answer-word {
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 900;
+  color: var(--text-primary);
+  margin-bottom: 22px;
+  letter-spacing: -1px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.spell-answer-word.size-md { font-size: 56px; }
+.spell-answer-word.size-sm { font-size: 48px; }
+.spell-answer-word.size-xs { font-size: 40px; line-height: 1.08; }
+
+.spell-answer-meaning-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.spell-answer-meaning-block .spell-pos-group {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.spell-answer-meaning-block .spell-senses {
+  text-align: left;
+}
+
+.spell-answer-example {
+  padding: 18px 22px;
+  border-left: 4px solid #9AE6B4;
+  border-radius: 12px;
+  background: #F5F1EC;
+  color: #8A94A6;
+  font-size: 18px;
+  font-style: italic;
+  line-height: 1.55;
+}
+
 .spell-next-btn {
   align-self: stretch;
-  padding: 10px;
-  font-size: 14px;
-  border-radius: var(--radius-md);
+  margin-top: auto;
+  padding: 14px;
+  font-size: 16px;
+  border-radius: 12px;
 }
 
 /* List Mode */
@@ -1520,6 +1737,27 @@ onUnmounted(() => {
 
 /* Upload dialog */
 .upload-tip { margin-bottom: 16px; }
+
+.quick-words-input {
+  margin-bottom: 14px;
+}
+
+.upload-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.upload-separator::before,
+.upload-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
 
 
 /* Batch Complete Dialog — styles moved to main.css */

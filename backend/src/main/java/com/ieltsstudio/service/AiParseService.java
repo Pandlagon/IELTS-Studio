@@ -472,11 +472,18 @@ public class AiParseService {
                  plant → "n. 植物；工厂；设备 · v. 种植；栽种；安置"
                  ability → "n. 能力；才能；本领"
                  （仅单一词性的词可以省略前缀标签）
-               - example：一个自然的英文例句（string，使用双引号包裹）
-            5. 只返回合法 JSON 数组，不要输出任何额外文字。
+                - example：一个自然的英文例句（string，使用双引号包裹）
+               - rootMemory：词根/词缀/拉丁或希腊词源/联想记忆法（string）
+                 要求：
+                 - 优先拆解真实词根、前缀、后缀，例如 "ac-/ad-（朝向、加强）+ cumulate（堆积）"
+                 - 可以补充词源，例如 "源自拉丁语 cumulus（堆积）"
+                 - 用中文解释该拆解如何帮助记忆
+                 - 如果没有可靠词根或词源，不要编造，返回空字符串
+             5. 只返回合法 JSON 数组，不要输出任何额外文字。
             输出示例：
-            [{"word":"seed","phonetic":"/siːd/","pos":"n.","posType":"n","meaning":"n. 种子；来源；起点 · v. 播种；去籽","example":"\\"Farmers plant seeds in spring.\\""},
-             {"word":"ability","phonetic":"/əˈbɪləti/","pos":"n.","posType":"n","meaning":"n. 能力；才能；本领","example":"\\"She has the ability to learn languages quickly.\\""}]
+            [{"word":"accumulate","phonetic":"/əˈkjuːmjəleɪt/","pos":"v.","posType":"v","meaning":"v. 积累；积聚；堆积","example":"\\"Dust accumulates quickly on the shelf.\\"","rootMemory":"ac-（加强）+ cumulate（堆积），源自拉丁语 cumulus（堆积），意为不断堆积，即积累。"},
+             {"word":"seed","phonetic":"/siːd/","pos":"n.","posType":"n","meaning":"n. 种子；来源；起点 · v. 播种；去籽","example":"\\"Farmers plant seeds in spring.\\"","rootMemory":"seed 本义为种子，可联想到“种下来源/起点”。"},
+             {"word":"ability","phonetic":"/əˈbɪləti/","pos":"n.","posType":"n","meaning":"n. 能力；才能；本领","example":"\\"She has the ability to learn languages quickly.\\"","rootMemory":"able 表示“能够”，-ity 构成名词，ability 即“能够做事的状态/能力”。"}]
             """;
 
     @SuppressWarnings("unchecked")
@@ -506,7 +513,9 @@ public class AiParseService {
         if (content.startsWith("```")) {
             content = content.replaceAll("^```[a-z]*\\n?", "").replaceAll("\\n?```$", "").trim();
         }
-        return (List<Map<String, Object>>) objectMapper.readValue(content, List.class);
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) objectMapper.readValue(content, List.class);
+        log.info("DeepSeek word generation parsed {} entries", entries.size());
+        return entries;
     }
 
     public AiParseService(ObjectMapper objectMapper) {

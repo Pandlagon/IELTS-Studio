@@ -182,19 +182,24 @@
                 {{ wordStore.currentIndex + 1 }} / {{ wordStore.totalWords }}
               </div>
               <div v-if="spellResult === 'correct' || spellResult === 'revealed'" class="spell-answer-card card">
-                <div v-if="activeSpellWord?.phonetic" class="spell-answer-phonetic">
-                  {{ activeSpellWord.phonetic }}
-                  <button class="play-btn-sm" @click="playWord(activeSpellWord.word)" title="播放发音">🔊</button>
-                </div>
-                <div class="spell-answer-word" :class="spellAnswerWordSizeClass">{{ activeSpellWord.word }}</div>
-                <div class="spell-answer-meaning-block">
-                  <div v-for="(grp, i) in spellMeaningGroups" :key="i" class="spell-pos-group">
-                    <span v-if="grp.pos" class="pos-badge" :class="`pos-${grp.posType}`">{{ grp.pos }}</span>
-                    <span class="spell-senses">{{ grp.senses.join('；') }}</span>
+                <div class="spell-answer-content">
+                  <div v-if="activeSpellWord?.phonetic" class="spell-answer-phonetic">
+                    {{ activeSpellWord.phonetic }}
+                    <button class="play-btn-sm" @click="playWord(activeSpellWord.word)" title="播放发音">🔊</button>
                   </div>
-                </div>
-                <div v-if="activeSpellWord?.example" class="spell-answer-example">
-                  "{{ activeSpellWord.example }}"
+                  <div class="spell-answer-word" :class="spellAnswerWordSizeClass">{{ activeSpellWord.word }}</div>
+                  <div class="spell-answer-meaning-block">
+                    <div v-for="(grp, i) in spellMeaningGroups" :key="i" class="spell-pos-group">
+                      <span v-if="grp.pos" class="pos-badge" :class="`pos-${grp.posType}`">{{ grp.pos }}</span>
+                      <span class="spell-senses">{{ grp.senses.join('；') }}</span>
+                    </div>
+                  </div>
+                  <div v-if="activeSpellRootMemory" class="spell-root-debug">
+                    词根记忆：{{ activeSpellRootMemory }}
+                  </div>
+                  <div v-if="activeSpellWord?.example" class="spell-answer-example">
+                    {{ activeSpellWord.example }}
+                  </div>
                 </div>
                 <button class="btn-primary spell-next-btn" @click="spellNext">
                   → 下一个
@@ -233,7 +238,13 @@
                       spellcheck="false"
                     />
                   </div>
-                  <button v-if="spellResult !== 'correct' && spellResult !== 'revealed'" class="btn-primary spell-check-btn" @click="checkSpell" :disabled="!spellInput.trim()">
+                  <button
+                    v-if="spellResult !== 'correct' && spellResult !== 'revealed'"
+                    class="btn-primary spell-check-btn"
+                    @click="checkSpell"
+                    @keydown.enter.stop
+                    :disabled="!spellInput.trim()"
+                  >
                     确认
                   </button>
                 </div>
@@ -265,8 +276,11 @@
             </select>
           </div>
           <div class="word-list">
+            <div v-if="filteredWordList.length === 0" class="list-empty card-sm card">
+              没有找到匹配的单词
+            </div>
             <div
-              v-for="word in filteredWordList"
+              v-for="word in pagedWordList"
               :key="word.id"
               class="word-row card-sm card"
             >
@@ -303,6 +317,29 @@
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 </button>
               </div>
+            </div>
+          </div>
+          <div class="list-pagination">
+            <div class="pagination-info">
+              共 {{ filteredWordList.length }} 个单词，第 {{ listPage }} / {{ listTotalPages }} 页
+            </div>
+            <div class="pagination-controls">
+              <select v-model.number="listPageSize" class="form-input page-size-select">
+                <option :value="10">10 / 页</option>
+                <option :value="20">20 / 页</option>
+                <option :value="50">50 / 页</option>
+              </select>
+              <button class="page-nav-btn" :disabled="listPage <= 1" @click="listPage--">‹</button>
+              <button
+                v-for="page in visibleListPages"
+                :key="page"
+                class="page-number-btn"
+                :class="{ active: page === listPage }"
+                @click="listPage = page"
+              >
+                {{ page }}
+              </button>
+              <button class="page-nav-btn" :disabled="listPage >= listTotalPages" @click="listPage++">›</button>
             </div>
           </div>
         </div>
@@ -381,6 +418,14 @@
           type="textarea"
           :rows="3"
           placeholder="输入一个帮助记忆的例句..."
+        />
+      </el-form-item>
+      <el-form-item label="词根记忆法（可选）">
+        <el-input
+          v-model="editForm.rootMemory"
+          type="textarea"
+          :rows="3"
+          placeholder="输入词根、词缀或联想记忆法..."
         />
       </el-form-item>
     </el-form>
@@ -504,6 +549,8 @@ const router = useRouter()
 const wordStore = useWordStore()
 const searchWord = ref('')
 const filterStatus = ref('all')
+const listPage = ref(1)
+const listPageSize = ref(10)
 const showBatchComplete = ref(false)
 const batchEncouragement = ref('')
 
@@ -555,6 +602,30 @@ const filteredWordList = computed(() => {
   else if (filterStatus.value === 'unknown') list = list.filter(w => wordStore.isUnknown(w.id))
   else if (filterStatus.value === 'new') list = list.filter(w => !wordStore.isKnown(w.id) && !wordStore.isUnknown(w.id))
   return list
+})
+
+const listTotalPages = computed(() => Math.max(1, Math.ceil(filteredWordList.value.length / listPageSize.value)))
+
+const pagedWordList = computed(() => {
+  const page = Math.min(listPage.value, listTotalPages.value)
+  const start = (page - 1) * listPageSize.value
+  return filteredWordList.value.slice(start, start + listPageSize.value)
+})
+
+const visibleListPages = computed(() => {
+  const total = listTotalPages.value
+  const current = Math.min(listPage.value, total)
+  const start = Math.max(1, current - 2)
+  const end = Math.min(total, start + 4)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+})
+
+watch([searchWord, filterStatus, listPageSize, () => wordStore.currentBookId], () => {
+  listPage.value = 1
+})
+
+watch(listTotalPages, (total) => {
+  if (listPage.value > total) listPage.value = total
 })
 
 function formatReaction(ms) {
@@ -632,10 +703,10 @@ function parseMeaning(raw) {
 // ── edit entry ────────────────────────────────────────────
 const showEditEntry = ref(false)
 const savingEntry = ref(false)
-const editForm = ref({ id: null, word: '', meaning: '', example: '' })
+const editForm = ref({ id: null, word: '', meaning: '', example: '', rootMemory: '' })
 
 function openEditEntry(word) {
-  editForm.value = { id: word.id, word: word.word, meaning: word.meaning || '', example: word.example || '' }
+  editForm.value = { id: word.id, word: word.word, meaning: word.meaning || '', example: word.example || '', rootMemory: word.rootMemory || word.root_memory || word.etymology || word.mnemonic || '' }
   showEditEntry.value = true
 }
 
@@ -643,7 +714,7 @@ async function doSaveEntry() {
   if (!editForm.value.meaning.trim()) { ElMessage.warning('请输入释义'); return }
   savingEntry.value = true
   try {
-    await wordStore.updateEntry(editForm.value.id, editForm.value.meaning, editForm.value.example)
+    await wordStore.updateEntry(editForm.value.id, editForm.value.meaning, editForm.value.example, editForm.value.rootMemory)
     showEditEntry.value = false
     ElMessage.success('已保存')
   } catch (e) {
@@ -716,13 +787,7 @@ async function doUpload() {
       uploadFile.value = null
       quickWordsText.value = ''
       ElMessage.info({ message: `已提交 ${quickWords.length} 个单词，AI 正在生成词条`, duration: 4000 })
-      setTimeout(async () => {
-        await wordStore.loadBooks()
-        if (shouldSwitchToDefault) {
-          const defaultBook = wordStore.books.find(book => book.isDefault)
-          if (defaultBook) wordStore.switchBook(defaultBook.id)
-        }
-      }, 1500)
+      pollQuickAddResult(shouldSwitchToDefault, quickWords.length)
     } catch (e) {
       ElMessage.error(e?.response?.data?.message || '添加失败，请重试')
     } finally {
@@ -754,6 +819,25 @@ async function doUpload() {
   }
 }
 
+function pollQuickAddResult(shouldSwitchToDefault, expectedCount) {
+  let attempts = 0
+  const timer = setInterval(async () => {
+    attempts += 1
+    await wordStore.loadBooks()
+    const defaultBook = wordStore.books.find(book => book.isDefault)
+    const targetBookId = shouldSwitchToDefault ? defaultBook?.id : wordStore.currentBookId
+    if (targetBookId && wordStore.currentBookId !== targetBookId) {
+      wordStore.switchBook(targetBookId)
+    } else if (targetBookId) {
+      await wordStore.loadEntries(targetBookId)
+    }
+    if (wordStore.bookEntries.length >= expectedCount || attempts >= 10) {
+      clearInterval(timer)
+      if (wordStore.bookEntries.length) ElMessage.success('AI 单词生成完成，词书已刷新')
+    }
+  }, 2000)
+}
+
 function parseQuickWords(text) {
   return String(text || '')
     .split(/[\n,，；、]+/)
@@ -775,8 +859,22 @@ const spellResult = ref(null) // null | 'correct' | 'wrong' | 'revealed'
 const spellInputRef = ref()
 const answeredSpellWord = ref(null)
 const skipNextSpellAutoPlay = ref(false)
+const blockSpellNextUntil = ref(0)
+const pendingSpellResult = ref(null)
 
 const activeSpellWord = computed(() => answeredSpellWord.value || wordStore.currentWord)
+
+const activeSpellRootMemory = computed(() => {
+  const word = activeSpellWord.value
+  const direct = word?.rootMemory || word?.root_memory || word?.etymology || word?.mnemonic || ''
+  if (direct) return direct
+  const matched = wordStore.words.find(w => (
+    (word?.id && w.id === word.id) || (word?.word && w.word === word.word)
+  )) || wordStore.displayWords.find(w => (
+    (word?.id && w.id === word.id) || (word?.word && w.word === word.word)
+  ))
+  return matched?.rootMemory || matched?.root_memory || matched?.etymology || matched?.mnemonic || ''
+})
 
 const spellAnswerWordSizeClass = computed(() => {
   const len = activeSpellWord.value?.word?.length || 0
@@ -795,6 +893,7 @@ watch(() => wordStore.currentWord?.id, () => {
   spellInput.value = ''
   spellResult.value = null
   answeredSpellWord.value = null
+  pendingSpellResult.value = null
   if (skipNextSpellAutoPlay.value) {
     skipNextSpellAutoPlay.value = false
     return
@@ -809,6 +908,8 @@ watch(() => wordStore.studyMode, (mode) => {
   if (mode === 'spell') {
     spellInput.value = ''
     spellResult.value = null
+    answeredSpellWord.value = null
+    pendingSpellResult.value = null
     if (wordStore.currentWord?.word) {
       playWord(wordStore.currentWord.word)
       nextTick(() => spellInputRef.value?.focus())
@@ -818,29 +919,28 @@ watch(() => wordStore.studyMode, (mode) => {
 
 function checkSpell() {
   if (!spellInput.value.trim() || spellResult.value === 'correct' || spellResult.value === 'revealed') return
+  blockSpellNextUntil.value = Date.now() + 500
   const currentWord = wordStore.currentWord
   answeredSpellWord.value = currentWord
   const answer = currentWord?.word?.trim().toLowerCase()
   const input = spellInput.value.trim().toLowerCase()
   const isCorrect = input === answer
   spellResult.value = isCorrect ? 'correct' : 'wrong'
+  pendingSpellResult.value = { id: currentWord.id, result: isCorrect ? 'correct' : 'wrong', reactionMs: 0 }
   playWord(currentWord.word)
   if (isCorrect) nextTick(() => spellInputRef.value?.blur())
-  nextTick(() => {
-    if (isCorrect) wordStore.markSpellCorrect({ id: currentWord.id, reactionMs: 0 })
-    else wordStore.markSpellIncorrect({ id: currentWord.id, reactionMs: 0 })
-  })
 }
 
 function revealSpell() {
   if (spellResult.value === 'correct' || spellResult.value === 'revealed') return
+  blockSpellNextUntil.value = Date.now() + 500
   const currentWord = wordStore.currentWord
   answeredSpellWord.value = currentWord
   spellInput.value = currentWord?.word || ''
   spellResult.value = 'revealed'
+  pendingSpellResult.value = { id: currentWord.id, result: 'wrong', reactionMs: 0 }
   playWord(currentWord.word)
   nextTick(() => spellInputRef.value?.blur())
-  nextTick(() => wordStore.markSpellIncorrect({ id: currentWord.id, reactionMs: 0 }))
 }
 
 function handleSpellEnter() {
@@ -849,6 +949,11 @@ function handleSpellEnter() {
 }
 
 function handleSpellInputKeydown(e) {
+  if (e.key === 'F2' && wordStore.currentWord?.word) {
+    e.preventDefault()
+    playWord(wordStore.currentWord.word)
+    return
+  }
   if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return
   e.preventDefault()
   if (e.isComposing) return
@@ -857,6 +962,7 @@ function handleSpellInputKeydown(e) {
 
 function spellNext() {
   const currentId = activeSpellWord.value?.id
+  applyPendingSpellResult()
   spellInput.value = ''
   spellResult.value = null
   answeredSpellWord.value = null
@@ -866,9 +972,22 @@ function spellNext() {
   nextTick(() => spellInputRef.value?.focus())
 }
 
+function applyPendingSpellResult() {
+  const pending = pendingSpellResult.value
+  if (!pending) return
+  pendingSpellResult.value = null
+  if (pending.result === 'correct') {
+    wordStore.markSpellCorrect({ id: pending.id, reactionMs: pending.reactionMs })
+  } else {
+    wordStore.markSpellIncorrect({ id: pending.id, reactionMs: pending.reactionMs })
+  }
+}
+
 function spellPrev() {
   spellInput.value = ''
   spellResult.value = null
+  answeredSpellWord.value = null
+  pendingSpellResult.value = null
   wordStore.prevWord()
   nextTick(() => spellInputRef.value?.focus())
 }
@@ -879,12 +998,13 @@ function handleKeydown(e) {
   const target = e.target
   const tag = target?.tagName
   const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable
+  const isInteractive = isTyping || tag === 'BUTTON'
   if (wordStore.studyMode === 'spell') {
     if (e.key === 'F2' && wordStore.currentWord?.word) {
       e.preventDefault()
       playWord(wordStore.currentWord.word)
     }
-    if (e.key === 'Enter' && (spellResult.value === 'correct' || spellResult.value === 'revealed')) {
+    if (e.key === 'Enter' && !isInteractive && Date.now() >= blockSpellNextUntil.value && (spellResult.value === 'correct' || spellResult.value === 'revealed')) {
       e.preventDefault()
       spellNext()
     }
@@ -1323,13 +1443,22 @@ onUnmounted(() => {
 .spell-answer-card {
   width: 460px;
   min-width: 420px;
-  min-height: 520px;
-  padding: 44px 48px 40px;
+  height: 560px;
+  max-height: calc(100vh - 140px);
+  padding: 38px 48px 28px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
+}
+
+.spell-answer-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 16px;
 }
 
 .spell-answer-phonetic {
@@ -1376,6 +1505,17 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.spell-root-debug {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #FFF7ED;
+  color: #C2410C;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .spell-answer-example {
   padding: 18px 22px;
   border-left: 4px solid #9AE6B4;
@@ -1387,12 +1527,23 @@ onUnmounted(() => {
   line-height: 1.55;
 }
 
+.spell-root-inline {
+  display: block;
+  margin-top: 10px;
+  color: #43536A;
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.55;
+  white-space: normal;
+}
+
 .spell-next-btn {
   align-self: stretch;
   margin-top: auto;
   padding: 14px;
   font-size: 16px;
   border-radius: 12px;
+  flex-shrink: 0;
 }
 
 /* List Mode */
@@ -1401,6 +1552,84 @@ onUnmounted(() => {
 .list-controls { display: flex; gap: 12px; }
 
 .word-list { display: flex; flex-direction: column; gap: 8px; }
+
+.list-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px 0;
+}
+
+.pagination-info {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-size-select {
+  width: 96px;
+  height: 32px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.page-nav-btn,
+.page-number-btn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.page-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.page-number-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.page-nav-btn:hover:not(:disabled),
+.page-number-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.page-number-btn.active:hover {
+  color: white;
+}
+
+@media (max-width: 760px) {
+  .list-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pagination-controls {
+    flex-wrap: wrap;
+  }
+}
 
 .word-row {
   display: flex;

@@ -161,15 +161,19 @@ export const useWordStore = defineStore('word', () => {
   // active words = either builtin list or current book entries
   const words = computed(() => {
     if (currentBookId.value === 'builtin') return IELTS_WORDS
-    return bookEntries.value.map(e => ({
-      id: e.id,
-      word: e.word,
-      phonetic: e.phonetic || '',
-      pos: e.pos || '',
-      posType: e.posType || 'n',
-      meaning: e.meaning || '',
-      example: e.example || '',
-    }))
+    return bookEntries.value.map(e => {
+      const rootMemory = e.rootMemory || e.root_memory || e.etymology || e.mnemonic || ''
+      return {
+        id: e.id,
+        word: e.word,
+        phonetic: e.phonetic || '',
+        pos: e.pos || '',
+        posType: e.posType || 'n',
+        meaning: e.meaning || '',
+        example: e.example || '',
+        rootMemory,
+      }
+    })
   })
 
   const enrichedWords = computed(() => {
@@ -382,8 +386,8 @@ export const useWordStore = defineStore('word', () => {
     if (idx !== -1) books.value[idx] = { ...books.value[idx], wordCount: bookEntries.value.length }
   }
 
-  async function updateEntry(entryId, meaning, example) {
-    const res = await request.put(`/words/entries/${entryId}`, { meaning, example })
+  async function updateEntry(entryId, meaning, example, rootMemory) {
+    const res = await request.put(`/words/entries/${entryId}`, { meaning, example, rootMemory })
     const updated = res.data
     const idx = bookEntries.value.findIndex(e => e.id === entryId)
     if (idx !== -1) bookEntries.value[idx] = { ...bookEntries.value[idx], ...updated }

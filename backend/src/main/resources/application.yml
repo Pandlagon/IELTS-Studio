@@ -1,4 +1,3 @@
-
 # ─────────────────────────────────────────────────────────────────────────────
 # IELTS Studio 后端配置文件
 # 敏感字段（数据库密码、API Key 等）在生产环境中请通过环境变量注入，不要明文提交到 Git
@@ -79,7 +78,7 @@ ai:
 #   - qwen3.6-plus           推荐，支持图片输入，有免费额度
 #   - 千问VL系列模型          支持图片输入，但没有免费额度
 qwen:
-  api-key: #your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
+  api-key:  #your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
   base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
   model: qwen3.6-plus
   ai-max-tokens: 8192
@@ -104,6 +103,3 @@ logging:
     org.springframework.web: WARN
     org.apache.tomcat: WARN
     com.zaxxer.hikari: WARN
-
-
-

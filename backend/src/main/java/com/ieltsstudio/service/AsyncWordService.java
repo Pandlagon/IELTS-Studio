@@ -65,6 +65,7 @@ public class AsyncWordService {
                     entry.setPosType(str(e, "posType"));
                     entry.setMeaning(meaning);
                     entry.setExample(str(e, "example"));
+                    entry.setRootMemory(str(e, "rootMemory"));
                     wordEntryMapper.insert(entry);
                     saved++;
                 } catch (Exception ex) {
@@ -101,7 +102,10 @@ public class AsyncWordService {
                 try {
                     String word = str(e, "word");
                     String meaning = str(e, "meaning");
-                    if (word == null || word.isBlank() || meaning == null || meaning.isBlank()) continue;
+                    if (word == null || word.isBlank() || meaning == null || meaning.isBlank()) {
+                        log.warn("Skip invalid quick-add entry, missing word or meaning: {}", e);
+                        continue;
+                    }
                     WordEntry entry = new WordEntry();
                     entry.setBookId(bookId);
                     entry.setUserId(userId);
@@ -111,10 +115,11 @@ public class AsyncWordService {
                     entry.setPosType(str(e, "posType"));
                     entry.setMeaning(meaning);
                     entry.setExample(str(e, "example"));
+                    entry.setRootMemory(str(e, "rootMemory"));
                     wordEntryMapper.insert(entry);
                     saved++;
                 } catch (Exception ex) {
-                    log.warn("Failed to quick-add word entry: {}", e, ex);
+                    log.error("Failed to quick-add word entry: {}", e, ex);
                 }
             }
             WordBook book = wordBookMapper.selectById(bookId);

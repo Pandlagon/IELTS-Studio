@@ -113,7 +113,7 @@ public class WordBookController {
     public Result<?> updateEntry(@PathVariable Long id,
                                  @RequestBody Map<String, String> body,
                                  @AuthenticationPrincipal AuthUser authUser) {
-        var entry = wordBookService.updateEntry(authUser.getId(), id, body.get("meaning"), body.get("example"));
+        var entry = wordBookService.updateEntry(authUser.getId(), id, body.get("meaning"), body.get("example"), body.get("rootMemory"));
         return entry != null ? Result.success(entry) : Result.notFound("词条不存在");
     }
 

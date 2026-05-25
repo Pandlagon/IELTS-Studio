@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS word_entries (
     pos_type  VARCHAR(20),
     meaning   VARCHAR(500) NOT NULL,
     example   TEXT,
+    root_memory TEXT,
     deleted   TINYINT(1)   NOT NULL DEFAULT 0,
     created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_we_book_id (book_id),
@@ -136,6 +137,8 @@ CREATE TABLE IF NOT EXISTS word_entries (
 
 -- Migration: run if word_books already exists without status
 -- ALTER TABLE word_books ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ready' AFTER word_count;
+-- Migration: run if word_entries already exists without root_memory
+-- ALTER TABLE word_entries ADD COLUMN root_memory TEXT AFTER example;
 
 -- Word Progress
 CREATE TABLE IF NOT EXISTS word_progress (

@@ -102,11 +102,12 @@ public class WordBookService {
         return result;
     }
 
-    public WordEntry updateEntry(Long userId, Long entryId, String meaning, String example, String rootMemory) {
+    public WordEntry updateEntry(Long userId, Long entryId, String meaning, String example, String exampleTranslation, String rootMemory) {
         WordEntry entry = wordEntryMapper.selectById(entryId);
         if (entry == null || !entry.getUserId().equals(userId)) return null;
         if (meaning != null) entry.setMeaning(meaning.trim());
         if (example != null) entry.setExample(example.trim());
+        if (exampleTranslation != null) entry.setExampleTranslation(exampleTranslation.trim());
         if (rootMemory != null) entry.setRootMemory(rootMemory.trim());
         wordEntryMapper.updateById(entry);
         return entry;
@@ -126,6 +127,7 @@ public class WordBookService {
         copy.setPosType(src.getPosType());
         copy.setMeaning(src.getMeaning());
         copy.setExample(src.getExample());
+        copy.setExampleTranslation(src.getExampleTranslation());
         copy.setRootMemory(src.getRootMemory());
         wordEntryMapper.insert(copy);
         WordBook book = wordBookMapper.selectById(defaultBook.getId());
@@ -148,6 +150,7 @@ public class WordBookService {
         entry.setPosType(data.get("posType"));
         entry.setMeaning(data.getOrDefault("meaning", "").trim());
         entry.setExample(data.get("example"));
+        entry.setExampleTranslation(data.get("exampleTranslation"));
         entry.setRootMemory(data.get("rootMemory"));
         if (entry.getWord().isEmpty() || entry.getMeaning().isEmpty()) return null;
         wordEntryMapper.insert(entry);

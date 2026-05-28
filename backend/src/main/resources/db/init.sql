@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS word_entries (
     pos_type  VARCHAR(20),
     meaning   VARCHAR(500) NOT NULL,
     example   TEXT,
+    example_translation TEXT,
     root_memory TEXT,
     deleted   TINYINT(1)   NOT NULL DEFAULT 0,
     created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -139,6 +140,8 @@ CREATE TABLE IF NOT EXISTS word_entries (
 -- ALTER TABLE word_books ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ready' AFTER word_count;
 -- Migration: run if word_entries already exists without root_memory
 -- ALTER TABLE word_entries ADD COLUMN root_memory TEXT AFTER example;
+-- Migration: run if word_entries already exists without example_translation
+-- ALTER TABLE word_entries ADD COLUMN example_translation TEXT AFTER example;
 
 -- Word Progress
 CREATE TABLE IF NOT EXISTS word_progress (
@@ -153,6 +156,24 @@ CREATE TABLE IF NOT EXISTS word_progress (
     updated_at DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_word (user_id, word_id),
     INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS word_study_states (
+    id            BIGINT      NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id       BIGINT      NOT NULL,
+    book_id       VARCHAR(50) NOT NULL,
+    known_ids     TEXT,
+    unknown_ids   TEXT,
+    review_states MEDIUMTEXT,
+    error_counts  TEXT,
+    sort_mode     VARCHAR(20) NOT NULL DEFAULT 'order',
+    batch_size    INT         NOT NULL DEFAULT 0,
+    batch_index   INT         NOT NULL DEFAULT 0,
+    current_index INT         NOT NULL DEFAULT 0,
+    created_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_book (user_id, book_id),
+    INDEX idx_wss_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Exam Collections (试卷集)

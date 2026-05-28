@@ -392,7 +392,7 @@
       </transition>
       <div class="fab-row">
         <button v-if="highlightMode" class="color-dot-btn" :class="{ eraser: highlightColor === ERASER_VALUE }" :style="highlightColor !== ERASER_VALUE ? { background: highlightColor } : {}" @click.stop="showColorPicker = !showColorPicker" title="选择颜色">{{ highlightColor === ERASER_VALUE ? '🧹' : '' }}</button>
-        <button class="fab-toggle hl-toggle" @click.stop="toggleHighlight" :title="highlightMode ? '退出高亮模式' : '划重点'">
+        <button class="fab-toggle hl-toggle" @click.stop="toggleHighlight" :title="highlightMode ? '退出高亮模式 (F2)' : '划重点 (F2)'">
           <span class="fab-icon">📌</span>
           <span class="fab-label">{{ highlightMode ? '退出划线' : '划重点' }}</span>
         </button>
@@ -1934,6 +1934,16 @@ function toggleHighlight() {
   }
 }
 
+function handleHighlightShortcut(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  const target = e.target
+  const tag = target?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return
+  if (e.key !== 'F2') return
+  e.preventDefault()
+  toggleHighlight()
+}
+
 onMounted(() => {
   const loaded = examStore.loadExam(route.params.id)
   if (!loaded) {
@@ -1952,6 +1962,7 @@ onMounted(() => {
     }
   }, 1000)
   window.addEventListener('resize', resizeWriteCharts)
+  window.addEventListener('keydown', handleHighlightShortcut)
   nextTick(() => requestAnimationFrame(() => renderWriteCharts()))
 
   // click outside to close translate bubble
@@ -1967,6 +1978,7 @@ onUnmounted(() => {
     wordStore.quickAddWords([...collectedWords.value]).catch(() => {})
   }
   window.removeEventListener('resize', resizeWriteCharts)
+  window.removeEventListener('keydown', handleHighlightShortcut)
   disposeWriteCharts()
 
   passageRef.value?.removeEventListener('mouseup', onPassageMouseUp)

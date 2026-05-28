@@ -155,6 +155,61 @@ export const useWordStore = defineStore('word', () => {
     localStorage.setItem(_reviewKey(currentBookId.value), JSON.stringify(reviewStates.value))
   }
 
+  function _hasRealToken() {
+    const token = localStorage.getItem('ielts_token') || ''
+    return !!token && !token.startsWith('mock_token_')
+  }
+
+  function _parseJson(value, fallback) {
+    if (!value) return fallback
+    if (typeof value !== 'string') return value
+    try { return JSON.parse(value) } catch { return fallback }
+  }
+
+  async function _loadStudyState(bookId) {
+    _loadBookSettings(bookId)
+    knownIds.value = new Set(JSON.parse(localStorage.getItem(_storeKey(bookId, 'known')) || '[]'))
+    unknownIds.value = new Set(JSON.parse(localStorage.getItem(_storeKey(bookId, 'unknown')) || '[]'))
+    if (!_hasRealToken()) return
+    try {
+      const res = await request.get(`/words/books/${bookId}/study-state`)
+      const state = res.data
+      if (!state) return
+      knownIds.value = new Set(_parseJson(state.knownIds || state.known_ids, []))
+      unknownIds.value = new Set(_parseJson(state.unknownIds || state.unknown_ids, []))
+      reviewStates.value = _parseJson(state.reviewStates || state.review_states, {})
+      errorCounts.value = _parseJson(state.errorCounts || state.error_counts, {})
+      sortMode.value = state.sortMode || state.sort_mode || sortMode.value
+      batchSize.value = Number(state.batchSize ?? state.batch_size ?? batchSize.value) || 0
+      batchIndex.value = Number(state.batchIndex ?? state.batch_index ?? batchIndex.value) || 0
+      currentIndex.value = Number(state.currentIndex ?? state.current_index ?? 0) || 0
+      _saveProgress()
+      _saveReviewStates()
+      _saveErrorCounts()
+      localStorage.setItem(_sortKey(bookId), sortMode.value)
+      localStorage.setItem(_batchKey(bookId), String(batchSize.value))
+    } catch { /* keep local state */ }
+  }
+
+  async function _saveStudyState() {
+    const bookId = currentBookId.value
+    localStorage.setItem(_sortKey(bookId), sortMode.value)
+    localStorage.setItem(_batchKey(bookId), String(batchSize.value))
+    if (!_hasRealToken()) return
+    try {
+      await request.put(`/words/books/${bookId}/study-state`, {
+        knownIds: JSON.stringify([...knownIds.value]),
+        unknownIds: JSON.stringify([...unknownIds.value]),
+        reviewStates: JSON.stringify(reviewStates.value),
+        errorCounts: JSON.stringify(errorCounts.value),
+        sortMode: sortMode.value,
+        batchSize: batchSize.value,
+        batchIndex: batchIndex.value,
+        currentIndex: currentIndex.value,
+      })
+    } catch { /* local fallback already saved */ }
+  }
+
   // entries of currently selected book (from backend)
   const bookEntries = ref([])
 
@@ -171,6 +226,7 @@ export const useWordStore = defineStore('word', () => {
         posType: e.posType || 'n',
         meaning: e.meaning || '',
         example: e.example || '',
+        exampleTranslation: e.exampleTranslation || e.example_translation || '',
         rootMemory,
       }
     })
@@ -386,8 +442,8 @@ export const useWordStore = defineStore('word', () => {
     if (idx !== -1) books.value[idx] = { ...books.value[idx], wordCount: bookEntries.value.length }
   }
 
-  async function updateEntry(entryId, meaning, example, rootMemory) {
-    const res = await request.put(`/words/entries/${entryId}`, { meaning, example, rootMemory })
+  async function updateEntry(entryId, meaning, example, exampleTranslation, rootMemory) {
+    const res = await request.put(`/words/entries/${entryId}`, { meaning, example, exampleTranslation, rootMemory })
     const updated = res.data
     const idx = bookEntries.value.findIndex(e => e.id === entryId)
     if (idx !== -1) bookEntries.value[idx] = { ...bookEntries.value[idx], ...updated }
@@ -425,6 +481,8 @@ export const useWordStore = defineStore('word', () => {
         posType: entry.posType,
         meaning: entry.meaning,
         example: entry.example,
+        exampleTranslation: entry.exampleTranslation,
+        rootMemory: entry.rootMemory,
       })
     } else {
       res = await request.post(`/words/entries/${entry.id}/copy-to-default`)
@@ -437,19 +495,17 @@ export const useWordStore = defineStore('word', () => {
     return res.data
   }
 
-  function switchBook(bookId) {
+  async function switchBook(bookId) {
     currentBookId.value = bookId
     currentIndex.value = 0
     focusUnknownOnly.value = false
-    knownIds.value = new Set(JSON.parse(localStorage.getItem(_storeKey(bookId, 'known')) || '[]'))
-    unknownIds.value = new Set(JSON.parse(localStorage.getItem(_storeKey(bookId, 'unknown')) || '[]'))
-    _loadBookSettings(bookId)
+    await _loadStudyState(bookId)
     if (bookId !== 'builtin') loadEntries(bookId)
     else bookEntries.value = []
   }
 
   // Init settings for initial book
-  _loadBookSettings('builtin')
+  _loadStudyState('builtin')
 
   // ── study actions ─────────────────────────────────────
   function _updateReviewSchedule(wordId, remembered, reactionMs = 0) {
@@ -506,6 +562,7 @@ export const useWordStore = defineStore('word', () => {
     _saveProgress()
     if (checkBatch) _checkBatchComplete()
     if (autoNext) nextWord()
+    _saveStudyState()
   }
 
   function markUnknown(payload) {
@@ -522,6 +579,7 @@ export const useWordStore = defineStore('word', () => {
     _saveProgress()
     if (checkBatch) _checkBatchComplete()
     if (autoNext) nextWord()
+    _saveStudyState()
   }
 
   function markSpellIncorrect(payload) {
@@ -553,6 +611,7 @@ export const useWordStore = defineStore('word', () => {
 
   function nextWord() {
     currentIndex.value = currentIndex.value < displayWords.value.length - 1 ? currentIndex.value + 1 : 0
+    _saveStudyState()
   }
 
   function nextSpellWord(currentId) {
@@ -574,6 +633,7 @@ export const useWordStore = defineStore('word', () => {
     const target = nextAfterCurrent(candidates, base, currentId)
     const displayIndex = displayWords.value.findIndex(w => w.id === target.id)
     currentIndex.value = displayIndex >= 0 ? displayIndex : 0
+    _saveStudyState()
   }
 
   function markSpellCorrect(payload) {
@@ -586,6 +646,7 @@ export const useWordStore = defineStore('word', () => {
       if (nextStreak < 2) {
         _updateReviewSchedule(wordId, true, reactionMs)
         _saveProgress()
+        _saveStudyState()
         return
       }
     }
@@ -600,6 +661,7 @@ export const useWordStore = defineStore('word', () => {
 
   function prevWord() {
     currentIndex.value = currentIndex.value > 0 ? currentIndex.value - 1 : displayWords.value.length - 1
+    _saveStudyState()
   }
 
   function resetProgress() {
@@ -612,6 +674,7 @@ export const useWordStore = defineStore('word', () => {
     batchIndex.value = 0
     _saveReviewStates()
     _saveProgress()
+    _saveStudyState()
   }
 
   // ── sort / batch actions ──────────────────────────────
@@ -620,6 +683,7 @@ export const useWordStore = defineStore('word', () => {
     currentIndex.value = 0
     focusUnknownOnly.value = false
     localStorage.setItem(_sortKey(currentBookId.value), mode)
+    _saveStudyState()
   }
 
   function setBatchSize(size) {
@@ -628,6 +692,7 @@ export const useWordStore = defineStore('word', () => {
     currentIndex.value = 0
     focusUnknownOnly.value = false
     localStorage.setItem(_batchKey(currentBookId.value), String(size))
+    _saveStudyState()
   }
 
   function nextBatch() {
@@ -636,6 +701,7 @@ export const useWordStore = defineStore('word', () => {
       batchIndex.value++
       currentIndex.value = 0
       focusUnknownOnly.value = false
+      _saveStudyState()
     }
   }
 
@@ -644,6 +710,7 @@ export const useWordStore = defineStore('word', () => {
       batchIndex.value--
       currentIndex.value = 0
       focusUnknownOnly.value = false
+      _saveStudyState()
     }
   }
 

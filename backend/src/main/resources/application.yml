@@ -65,7 +65,7 @@ jwt:
 # 申请地址：https://platform.deepseek.com
 ai:
   deepseek:
-    api-key: #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
+    api-key:  #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
     base-url: https://api.deepseek.com
     model: deepseek-chat
     max-tokens: 16384

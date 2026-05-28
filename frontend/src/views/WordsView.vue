@@ -198,7 +198,11 @@
                     词根记忆：{{ activeSpellRootMemory }}
                   </div>
                   <div v-if="activeSpellWord?.example" class="spell-answer-example">
-                    {{ activeSpellWord.example }}
+                    <span>
+                      {{ activeSpellWord.example }}
+                      <span v-if="activeSpellWord?.exampleTranslation" class="example-translation">{{ activeSpellWord.exampleTranslation }}</span>
+                    </span>
+                    <button class="example-play-btn" @click="playExampleSentence" title="播放例句">🔊</button>
                   </div>
                 </div>
                 <button class="btn-primary spell-next-btn" @click="spellNext">
@@ -206,16 +210,22 @@
                 </button>
               </div>
               <div v-else class="spell-card card">
+                <button class="spell-hide-meaning-btn" @click="hideSpellMeaning = !hideSpellMeaning">
+                  {{ hideSpellMeaning ? '显示中文' : '隐藏中文' }}
+                </button>
                 <!-- POS badge -->
-                <div v-if="!spellMeaningGroups.some(g => g.pos) && wordStore.currentWord?.pos" class="spell-pos-row">
+                <div v-if="!hideSpellMeaning && !spellMeaningGroups.some(g => g.pos) && wordStore.currentWord?.pos" class="spell-pos-row">
                   <span class="pos-badge" :class="`pos-${wordStore.currentWord.posType}`">{{ wordStore.currentWord.pos }}</span>
                 </div>
                 <!-- Meaning -->
-                <div class="spell-meaning">
+                <div v-if="!hideSpellMeaning" class="spell-meaning">
                   <div v-for="(grp, i) in spellMeaningGroups" :key="i" class="spell-pos-group">
                     <span v-if="grp.pos" class="pos-badge" :class="`pos-${grp.posType}`">{{ grp.pos }}</span>
                     <span class="spell-senses">{{ grp.senses.join('；') }}</span>
                   </div>
+                </div>
+                <div v-else class="spell-meaning-hidden">
+                  已隐藏中文释义，请根据音频拼写
                 </div>
                 <!-- Audio replay button -->
                 <button class="spell-play-btn" @click="playWord(wordStore.currentWord.word)" title="再听一次">
@@ -420,6 +430,14 @@
           placeholder="输入一个帮助记忆的例句..."
         />
       </el-form-item>
+      <el-form-item label="例句翻译（可选）">
+        <el-input
+          v-model="editForm.exampleTranslation"
+          type="textarea"
+          :rows="2"
+          placeholder="输入英文例句对应的中文翻译..."
+        />
+      </el-form-item>
       <el-form-item label="词根记忆法（可选）">
         <el-input
           v-model="editForm.rootMemory"
@@ -553,6 +571,7 @@ const listPage = ref(1)
 const listPageSize = ref(10)
 const showBatchComplete = ref(false)
 const batchEncouragement = ref('')
+const hideSpellMeaning = ref(false)
 
 // dialogs
 const showCreateBook = ref(false)
@@ -703,10 +722,10 @@ function parseMeaning(raw) {
 // ── edit entry ────────────────────────────────────────────
 const showEditEntry = ref(false)
 const savingEntry = ref(false)
-const editForm = ref({ id: null, word: '', meaning: '', example: '', rootMemory: '' })
+const editForm = ref({ id: null, word: '', meaning: '', example: '', exampleTranslation: '', rootMemory: '' })
 
 function openEditEntry(word) {
-  editForm.value = { id: word.id, word: word.word, meaning: word.meaning || '', example: word.example || '', rootMemory: word.rootMemory || word.root_memory || word.etymology || word.mnemonic || '' }
+  editForm.value = { id: word.id, word: word.word, meaning: word.meaning || '', example: word.example || '', exampleTranslation: word.exampleTranslation || word.example_translation || '', rootMemory: word.rootMemory || word.root_memory || word.etymology || word.mnemonic || '' }
   showEditEntry.value = true
 }
 
@@ -714,7 +733,7 @@ async function doSaveEntry() {
   if (!editForm.value.meaning.trim()) { ElMessage.warning('请输入释义'); return }
   savingEntry.value = true
   try {
-    await wordStore.updateEntry(editForm.value.id, editForm.value.meaning, editForm.value.example, editForm.value.rootMemory)
+    await wordStore.updateEntry(editForm.value.id, editForm.value.meaning, editForm.value.example, editForm.value.exampleTranslation, editForm.value.rootMemory)
     showEditEntry.value = false
     ElMessage.success('已保存')
   } catch (e) {
@@ -941,6 +960,11 @@ function revealSpell() {
   pendingSpellResult.value = { id: currentWord.id, result: 'wrong', reactionMs: 0 }
   playWord(currentWord.word)
   nextTick(() => spellInputRef.value?.blur())
+}
+
+function playExampleSentence() {
+  const sentence = activeSpellWord.value?.example?.replace(/^["“”]+|["“”]+$/g, '').trim()
+  if (sentence) playWord(sentence)
 }
 
 function handleSpellEnter() {
@@ -1313,6 +1337,27 @@ onUnmounted(() => {
   box-shadow: var(--shadow-xl);
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+}
+
+.spell-hide-meaning-btn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.spell-hide-meaning-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: #F0F7F4;
 }
 
 .spell-pos-row {
@@ -1326,6 +1371,17 @@ onUnmounted(() => {
   justify-content: center;
   gap: 6px;
   flex: 1;
+}
+
+.spell-meaning-hidden {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 15px;
+  text-align: center;
+  line-height: 1.5;
 }
 
 .spell-pos-group {
@@ -1443,8 +1499,7 @@ onUnmounted(() => {
 .spell-answer-card {
   width: 460px;
   min-width: 420px;
-  height: 560px;
-  max-height: calc(100vh - 140px);
+  min-height: 560px;
   padding: 38px 48px 28px;
   display: flex;
   flex-direction: column;
@@ -1455,9 +1510,6 @@ onUnmounted(() => {
 
 .spell-answer-content {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
   margin-bottom: 16px;
 }
 
@@ -1517,6 +1569,10 @@ onUnmounted(() => {
 }
 
 .spell-answer-example {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   padding: 18px 22px;
   border-left: 4px solid #9AE6B4;
   border-radius: 12px;
@@ -1525,6 +1581,32 @@ onUnmounted(() => {
   font-size: 18px;
   font-style: italic;
   line-height: 1.55;
+}
+
+.example-play-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.45;
+  padding: 4px;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.example-play-btn:hover {
+  opacity: 1;
+  transform: scale(1.12);
+}
+
+.example-translation {
+  display: block;
+  margin-top: 8px;
+  color: #5F6F85;
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .spell-root-inline {

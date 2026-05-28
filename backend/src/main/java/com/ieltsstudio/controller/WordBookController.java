@@ -4,6 +4,7 @@ import com.ieltsstudio.common.Result;
 import com.ieltsstudio.security.AuthUser;
 import com.ieltsstudio.service.ClozeService;
 import com.ieltsstudio.service.WordBookService;
+import com.ieltsstudio.service.WordStudyStateService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +36,7 @@ public class WordBookController {
     private final WordBookService wordBookService;
     private final AsyncWordService asyncWordService;
     private final ClozeService clozeService;
+    private final WordStudyStateService wordStudyStateService;
 
     // ─── 词书管理 ──────────────────────────────────────────────────────────────
 
@@ -83,6 +85,19 @@ public class WordBookController {
         return ok ? Result.success(null) : Result.error("无法删除该词书");
     }
 
+    @GetMapping("/books/{id}/study-state")
+    public Result<?> getStudyState(@PathVariable String id,
+                                   @AuthenticationPrincipal AuthUser authUser) {
+        return Result.success(wordStudyStateService.getState(authUser.getId(), id));
+    }
+
+    @PutMapping("/books/{id}/study-state")
+    public Result<?> saveStudyState(@PathVariable String id,
+                                    @RequestBody Map<String, Object> body,
+                                    @AuthenticationPrincipal AuthUser authUser) {
+        return Result.success(wordStudyStateService.saveState(authUser.getId(), id, body));
+    }
+
     // ─── 词条管理 ──────────────────────────────────────────────────────────────
 
     /**
@@ -113,7 +128,7 @@ public class WordBookController {
     public Result<?> updateEntry(@PathVariable Long id,
                                  @RequestBody Map<String, String> body,
                                  @AuthenticationPrincipal AuthUser authUser) {
-        var entry = wordBookService.updateEntry(authUser.getId(), id, body.get("meaning"), body.get("example"), body.get("rootMemory"));
+        var entry = wordBookService.updateEntry(authUser.getId(), id, body.get("meaning"), body.get("example"), body.get("exampleTranslation"), body.get("rootMemory"));
         return entry != null ? Result.success(entry) : Result.notFound("词条不存在");
     }
 

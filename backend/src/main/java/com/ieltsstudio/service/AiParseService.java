@@ -467,23 +467,32 @@ public class AiParseService {
                  - 每个词性组内列出 2-3 个常见义项，用 "；" 分隔
                  - 不同词性组用 " · " 分隔
                  - 重要：如果一个词常见用法包含多个词性（例如既可作名词又可作动词），必须包含所有主要词性组
+                 - 严禁在中文释义中直接出现 word 字段里的英文单词，也不要出现该词的小写/大写/单复数/时态变体
+                 - 如果 word 是某个词的复数、过去式、过去分词、现在分词、第三人称单数等变形，只能写“复数形式”“过去式/过去分词形式”“现在分词形式”“第三人称单数形式”等，不要写“xxx的复数”“xxx的过去式”
                  示例：
                  seed → "n. 种子；来源；起点 · v. 播种；去籽；定为种子选手"
                  plant → "n. 植物；工厂；设备 · v. 种植；栽种；安置"
                  ability → "n. 能力；才能；本领"
+                 conferences → "n. 会议；讨论会；协商会（复数形式）"
                  （仅单一词性的词可以省略前缀标签）
                 - example：一个自然的英文例句（string，使用双引号包裹）
-               - rootMemory：词根/词缀/拉丁或希腊词源/联想记忆法（string）
+               - exampleTranslation：example 对应的中文翻译（string）
                  要求：
-                 - 优先拆解真实词根、前缀、后缀，例如 "ac-/ad-（朝向、加强）+ cumulate（堆积）"
-                 - 可以补充词源，例如 "源自拉丁语 cumulus（堆积）"
-                 - 用中文解释该拆解如何帮助记忆
-                 - 如果没有可靠词根或词源，不要编造，返回空字符串
+                 - 必须准确翻译 example 的完整句子
+                 - 不要添加解释，不要翻译成多个版本
+               - rootMemory：基于单词拼写的拆分记忆法（string）
+                 要求：
+                 - 必须从当前单词的拼写出发，拆成容易观察的前缀/词根/后缀或拼写片段，例如 "spec- + -ation"
+                 - 重点说明每个拼写片段如何帮助记忆中文含义
+                 - 不要写“源自/来自/拉丁语/希腊语/古英语/原词/本义/缩小形式”等词源考据
+                 - 不要解释该词历史上由哪个单词演变而来
+                 - 可以使用常见词根词缀含义，例如 spec-（看、检查）、-ation（行为、状态）
+                 - 如果无法合理从拼写拆分，不要编造，返回空字符串
              5. 只返回合法 JSON 数组，不要输出任何额外文字。
             输出示例：
-            [{"word":"accumulate","phonetic":"/əˈkjuːmjəleɪt/","pos":"v.","posType":"v","meaning":"v. 积累；积聚；堆积","example":"\\"Dust accumulates quickly on the shelf.\\"","rootMemory":"ac-（加强）+ cumulate（堆积），源自拉丁语 cumulus（堆积），意为不断堆积，即积累。"},
-             {"word":"seed","phonetic":"/siːd/","pos":"n.","posType":"n","meaning":"n. 种子；来源；起点 · v. 播种；去籽","example":"\\"Farmers plant seeds in spring.\\"","rootMemory":"seed 本义为种子，可联想到“种下来源/起点”。"},
-             {"word":"ability","phonetic":"/əˈbɪləti/","pos":"n.","posType":"n","meaning":"n. 能力；才能；本领","example":"\\"She has the ability to learn languages quickly.\\"","rootMemory":"able 表示“能够”，-ity 构成名词，ability 即“能够做事的状态/能力”。"}]
+            [{"word":"inspection","phonetic":"/ɪnˈspekʃn/","pos":"n.","posType":"n","meaning":"n. 检查；视察；审查","example":"\\"The bridge requires a safety inspection.\\"","exampleTranslation":"这座桥需要进行安全检查。","rootMemory":"in-（进入）+ spec-（看、检查）+ -tion（名词结果），把目光看进去并检查，记作“检查、视察”。"},
+             {"word":"capsule","phonetic":"/ˈkæpsjuːl/","pos":"n.","posType":"n","meaning":"n. 胶囊；太空舱；小容器","example":"\\"She takes vitamin capsules every day.\\"","exampleTranslation":"她每天服用维生素胶囊。","rootMemory":"cap- 可联想 cover/盖住，-sule 联想小容器，合起来记作“被盖住的小容器”，对应胶囊、舱。"},
+             {"word":"ability","phonetic":"/əˈbɪləti/","pos":"n.","posType":"n","meaning":"n. 能力；才能；本领","example":"\\"She has the ability to learn languages quickly.\\"","exampleTranslation":"她有快速学习语言的能力。","rootMemory":"able 表示“能够”，-ity 构成名词，ability 即“能够做事的状态/能力”。"}]
             """;
 
     @SuppressWarnings("unchecked")

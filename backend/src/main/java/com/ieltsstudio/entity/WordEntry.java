@@ -28,6 +28,8 @@ public class WordEntry {
 
     private String example;
 
+    private String exampleTranslation;
+
     private String rootMemory;
 
     @TableLogic

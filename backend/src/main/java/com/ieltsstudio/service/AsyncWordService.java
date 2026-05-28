@@ -65,6 +65,7 @@ public class AsyncWordService {
                     entry.setPosType(str(e, "posType"));
                     entry.setMeaning(meaning);
                     entry.setExample(str(e, "example"));
+                    entry.setExampleTranslation(str(e, "exampleTranslation"));
                     entry.setRootMemory(str(e, "rootMemory"));
                     wordEntryMapper.insert(entry);
                     saved++;
@@ -115,6 +116,7 @@ public class AsyncWordService {
                     entry.setPosType(str(e, "posType"));
                     entry.setMeaning(meaning);
                     entry.setExample(str(e, "example"));
+                    entry.setExampleTranslation(str(e, "exampleTranslation"));
                     entry.setRootMemory(str(e, "rootMemory"));
                     wordEntryMapper.insert(entry);
                     saved++;

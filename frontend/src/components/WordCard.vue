@@ -16,7 +16,13 @@
           <span v-for="(sense, j) in group.senses" :key="j" class="sense">{{ sense }}<span v-if="j < group.senses.length - 1" class="sep">；</span></span>
         </span>
       </div>
-      <div class="example">{{ word.example }}</div>
+      <div v-if="word.example" class="example">
+        <span>
+          {{ word.example }}
+          <span v-if="word.exampleTranslation" class="example-translation">{{ word.exampleTranslation }}</span>
+        </span>
+        <button class="example-play-btn" @click.stop="playExampleSentence" title="播放例句">🔊</button>
+      </div>
     </div>
 
     <!-- Placeholder when meaning is hidden -->
@@ -113,6 +119,11 @@ function revealMeaning(choice) {
   userChoice.value = choice
   meaningRevealed.value = true
   if (props.word?.word) playWord(props.word.word)
+}
+
+function playExampleSentence() {
+  const sentence = props.word?.example?.replace(/^["“”]+|["“”]+$/g, '').trim()
+  if (sentence) playWord(sentence)
 }
 
 function confirmAndNext() {
@@ -298,6 +309,10 @@ onUnmounted(() => {
 }
 
 .example {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   font-size: 14px;
   color: var(--text-muted);
   font-style: italic;
@@ -307,6 +322,32 @@ onUnmounted(() => {
   background: var(--bg-primary);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--color-accent-light);
+}
+
+.example-play-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.45;
+  padding: 3px;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.example-play-btn:hover {
+  opacity: 1;
+  transform: scale(1.12);
+}
+
+.example-translation {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.45;
 }
 
 .card-actions {

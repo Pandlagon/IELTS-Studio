@@ -476,7 +476,8 @@ async function save() {
   padding-bottom: 4px !important;
 }
 
-:deep(.el-input__wrapper) {
+:deep(.el-input__wrapper),
+:deep(.el-select__wrapper) {
   border-radius: var(--radius-sm);
 }
 

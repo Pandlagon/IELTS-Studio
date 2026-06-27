@@ -888,6 +888,33 @@ html.dark .el-textarea__inner {
 html.dark .el-textarea__inner:focus {
   border-color: var(--color-primary) !important;
 }
+
+/* Dark mode: el-select 外框（与 el-input__wrapper 对称，补全主题适配） */
+html.dark .el-select__wrapper {
+  background-color: var(--bg-card) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+html.dark .el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--color-accent) inset !important;
+}
+html.dark .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+  background-color: var(--bg-white) !important;
+}
+html.dark .el-select__placeholder,
+html.dark .el-select__selected-item {
+  color: var(--text-primary) !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+html.dark .el-select__placeholder.is-transparent {
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+}
+html.dark .el-select__caret,
+html.dark .el-select__suffix {
+  color: var(--text-muted) !important;
+}
+
 html.dark .el-form-item__label {
   color: var(--text-secondary) !important;
 }

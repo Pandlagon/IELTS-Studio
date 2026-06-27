@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本仓库的主要 Agent 开发规范见 [AGENTS.md](./AGENTS.md)。
+@AGENTS.md
 
 在开始任何代码修改前，请先阅读 AGENTS.md，并遵守其中关于项目结构、后端分层、前端约定、AI Provider、数据库变更和安全边界的要求。
 

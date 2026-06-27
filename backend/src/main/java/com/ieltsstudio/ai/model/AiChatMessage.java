@@ -42,6 +42,11 @@ public class AiChatMessage {
         return new AiChatMessage("user", text);
     }
 
+    /** 构造 user 消息（content 可为 String 或 List/Map 多模态结构） */
+    public static AiChatMessage user(Object content) {
+        return new AiChatMessage("user", content);
+    }
+
     /** 构造 user 多模态消息（content 为 List/Map 结构） */
     public static AiChatMessage userMultimodal(Object content) {
         return new AiChatMessage("user", content);

@@ -398,6 +398,16 @@ mvn spring-boot:run       # 启动
 mvn clean package         # 打包为 jar
 ```
 
+### Agent 开发说明
+
+如果使用 Claude Code、GLM、Codex 或其他 AI coding agent 参与开发，请先阅读：
+
+- [AGENTS.md](./AGENTS.md)
+- [docs/agent-development.md](./docs/agent-development.md)
+- [docs/ai-provider-architecture.md](./docs/ai-provider-architecture.md)
+- [docs/security-and-quota-plan.md](./docs/security-and-quota-plan.md)
+- [docs/database-change-guide.md](./docs/database-change-guide.md)
+
 ---
 
 ## 贡献与反馈

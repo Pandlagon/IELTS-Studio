@@ -48,3 +48,11 @@ qwen:
   max-pages: 20         # 单次精准解析最大页数
   render-dpi: 160       # PDF 渲染分辨率（DPI），越高越清晰但耗时更长
   image-quality: 0.82   # 图片压缩质量（0~1），影响 API 传输体积
+
+# ─── 用户自填 API Key 加密密钥 ────────────────────────────────────────────────
+# 用于加密 user_ai_settings 表中的 *_api_key_encrypted 字段（AES/GCM/NoPadding）。
+# 生产环境必须通过环境变量 AI_KEY_ENCRYPTION_SECRET 注入高强度随机字符串。
+# 缺失时后端会回退到开发态密钥并打印 WARN 日志，禁止用于生产。
+app:
+  ai:
+    key-encryption-secret: ${AI_KEY_ENCRYPTION_SECRET:}

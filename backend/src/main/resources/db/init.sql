@@ -211,3 +211,78 @@ CREATE TABLE IF NOT EXISTS study_checkins (
     INDEX idx_sc_user_id (user_id),
     INDEX idx_sc_date (checkin_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Phase 3A：AI 用户设置与额度数据库基础设施
+-- 以下三张表为用户自填 API Key / 内置额度 / AI 调用流水提供存储。
+-- 仅建表 + Entity + Mapper，业务逻辑（扣费 / 解析用户设置）留待后续阶段。
+-- 敏感字段（*_api_key_encrypted）必须经后端加密后入库，*_api_key_masked 供前端展示。
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- User AI Settings（每个用户一份 AI 使用模式与自填 Provider 配置）
+CREATE TABLE IF NOT EXISTS user_ai_settings (
+    id                          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id                     BIGINT       NOT NULL,
+    key_mode                    VARCHAR(20)  NOT NULL DEFAULT 'BUILTIN',  -- BUILTIN / USER
+
+    -- Text Provider 配置（USER 模式生效）
+    text_provider               VARCHAR(50)  NOT NULL DEFAULT 'DEEPSEEK', -- DEEPSEEK / OPENAI_COMPATIBLE
+    text_base_url               VARCHAR(500),
+    text_model                  VARCHAR(100),
+    text_api_key_encrypted      VARCHAR(1000),                             -- 加密密文，禁止返回前端
+    text_api_key_masked         VARCHAR(50),                               -- 脱敏串，如 sk-****abcd
+
+    -- Vision Provider 配置（USER 模式生效）
+    vision_provider             VARCHAR(50)  NOT NULL DEFAULT 'QWEN',      -- QWEN / MIMO / OPENAI_COMPATIBLE
+    vision_base_url             VARCHAR(500),
+    vision_model                VARCHAR(100),
+    vision_api_key_encrypted    VARCHAR(1000),                             -- 加密密文，禁止返回前端
+    vision_api_key_masked       VARCHAR(50),                               -- 脱敏串，如 sk-****abcd
+
+    created_at                  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_user_ai_settings_user_id (user_id),
+    INDEX idx_user_ai_settings_key_mode (key_mode)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- AI Usage Quota（用户当前周期的内置额度快照）
+CREATE TABLE IF NOT EXISTS ai_usage_quota (
+    id              BIGINT   NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id         BIGINT   NOT NULL,
+    period_start    DATETIME NOT NULL,
+    period_end      DATETIME NOT NULL,
+    credits_total   INT      NOT NULL DEFAULT 30,
+    credits_used    INT      NOT NULL DEFAULT 0,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_ai_usage_quota_user_period (user_id, period_start),
+    INDEX idx_ai_usage_quota_user_id (user_id),
+    INDEX idx_ai_usage_quota_period_end (period_end)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- AI Usage Records（AI 调用流水，用于审计 / 调试 / 统计）
+CREATE TABLE IF NOT EXISTS ai_usage_records (
+    id              BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id         BIGINT       NOT NULL,
+    task_type       VARCHAR(20)  NOT NULL,   -- TEXT / VISION
+    feature         VARCHAR(50)  NOT NULL,   -- grade-writing / ai-chat / translate / ...
+    cost            INT          NOT NULL DEFAULT 0,
+    key_mode        VARCHAR(20)  NOT NULL,   -- BUILTIN / USER
+    provider        VARCHAR(50),
+    status          VARCHAR(20)  NOT NULL,   -- SUCCESS / FAILED / REJECTED
+    error_message   VARCHAR(500),            -- 脱敏后的简短错误摘要；禁止记录 API Key
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_ai_usage_records_user_id (user_id),
+    INDEX idx_ai_usage_records_created_at (created_at),
+    INDEX idx_ai_usage_records_feature (feature),
+    INDEX idx_ai_usage_records_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration: run these if upgrading an existing deployment without AI settings tables
+-- (see table definitions above)
+-- CREATE TABLE IF NOT EXISTS user_ai_settings (...);
+-- CREATE TABLE IF NOT EXISTS ai_usage_quota (...);
+-- CREATE TABLE IF NOT EXISTS ai_usage_records (...);

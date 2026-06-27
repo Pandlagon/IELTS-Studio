@@ -50,9 +50,11 @@
 
 ---
 
-## 5. 未来 `user_ai_settings` 表建议字段
+## 5. `user_ai_settings` 表
 
-> 本节仅为设计，**这一步不创建表**。
+> ✅ **已于 Phase 3A 实现**，建表 SQL 见 `backend/src/main/resources/db/init.sql`。
+> 对应 Entity：`com.ieltsstudio.entity.UserAiSettings`；Mapper：`UserAiSettingsMapper`。
+> 业务逻辑（解析用户设置 / 解密 Key）留待后续阶段。
 
 ```sql
 CREATE TABLE IF NOT EXISTS user_ai_settings (
@@ -61,14 +63,14 @@ CREATE TABLE IF NOT EXISTS user_ai_settings (
     key_mode                    VARCHAR(20)  NOT NULL DEFAULT 'BUILTIN',  -- BUILTIN / USER
 
     -- Text Provider 配置（USER 模式生效）
-    text_provider               VARCHAR(50),                    -- DeepSeek / CUSTOM
+    text_provider               VARCHAR(50)  NOT NULL DEFAULT 'DEEPSEEK', -- DEEPSEEK / OPENAI_COMPATIBLE
     text_base_url               VARCHAR(500),
     text_model                  VARCHAR(100),
     text_api_key_encrypted      VARCHAR(1000),
     text_api_key_masked         VARCHAR(50),
 
     -- Vision Provider 配置（USER 模式生效）
-    vision_provider             VARCHAR(50),                    -- Qwen / MiMO / CUSTOM
+    vision_provider             VARCHAR(50)  NOT NULL DEFAULT 'QWEN',      -- QWEN / MIMO / OPENAI_COMPATIBLE
     vision_base_url             VARCHAR(500),
     vision_model                VARCHAR(100),
     vision_api_key_encrypted    VARCHAR(1000),
@@ -76,7 +78,8 @@ CREATE TABLE IF NOT EXISTS user_ai_settings (
 
     created_at                  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at                  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_uas_user_id (user_id)
+    UNIQUE KEY uk_user_ai_settings_user_id (user_id),
+    INDEX idx_user_ai_settings_key_mode (key_mode)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
@@ -86,7 +89,7 @@ CREATE TABLE IF NOT EXISTS user_ai_settings (
 |---|---|
 | `user_id` | 关联 `users.id`，一对一 |
 | `key_mode` | `BUILTIN`（用站点 Key）或 `USER`（用自填 Key） |
-| `text_provider` | 文本 Provider 标识，预设或 `CUSTOM` |
+| `text_provider` | 文本 Provider 标识，预设或 `OPENAI_COMPATIBLE` |
 | `text_base_url` | 自定义文本 Base URL（OpenAI-compatible） |
 | `text_model` | 文本模型名 |
 | `text_api_key_encrypted` | 文本 API Key 加密密文，**不返回前端** |
@@ -96,13 +99,13 @@ CREATE TABLE IF NOT EXISTS user_ai_settings (
 
 ---
 
-## 6. 未来 `ai_usage_quota` / `ai_usage_records` 表设计方向
+## 6. `ai_usage_quota` / `ai_usage_records` 表
 
-> 本节仅为设计，**这一步不创建表**。
+> ✅ **已于 Phase 3A 实现（A+B 结合方案）**，建表 SQL 见 `backend/src/main/resources/db/init.sql`。
+> 对应 Entity：`AiUsageQuota` / `AiUsageRecord`；Mapper：`AiUsageQuotaMapper` / `AiUsageRecordMapper`。
+> 扣费 / 周期切换 / 统计 SQL 留待后续阶段（Phase 3B/3C）。
 
-两条路线，实施时择一（或结合）：
-
-### 路线 A：`ai_usage_quota`（额度快照表）
+### `ai_usage_quota`（额度快照表）
 
 记录每用户当前周期剩余 credits，适合高频读、低频写。
 
@@ -116,14 +119,15 @@ CREATE TABLE IF NOT EXISTS ai_usage_quota (
     credits_used    INT      NOT NULL DEFAULT 0, -- 已使用额度
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_uq_user_period (user_id, period_start),
-    INDEX idx_uq_user_id (user_id)
+    UNIQUE KEY uk_ai_usage_quota_user_period (user_id, period_start),
+    INDEX idx_ai_usage_quota_user_id (user_id),
+    INDEX idx_ai_usage_quota_period_end (period_end)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-### 路线 B：`ai_usage_records`（扣费流水表）
+### `ai_usage_records`（扣费流水表）
 
-记录每次 AI 调用扣费明细，适合审计与统计，剩余额度按流水聚合。
+记录每次 AI 调用明细，适合审计与统计，剩余额度按流水聚合。
 
 ```sql
 CREATE TABLE IF NOT EXISTS ai_usage_records (
@@ -131,21 +135,23 @@ CREATE TABLE IF NOT EXISTS ai_usage_records (
     user_id         BIGINT       NOT NULL,
     task_type       VARCHAR(20)  NOT NULL,        -- TEXT / VISION
     feature         VARCHAR(50)  NOT NULL,        -- grade-writing / ai-chat / translate / ...
-    cost            INT          NOT NULL,
+    cost            INT          NOT NULL DEFAULT 0,
     key_mode        VARCHAR(20)  NOT NULL,        -- BUILTIN / USER
     provider        VARCHAR(50),
-    status          VARCHAR(20)  NOT NULL,        -- SUCCESS / FAILED
+    status          VARCHAR(20)  NOT NULL,        -- SUCCESS / FAILED / REJECTED
+    error_message   VARCHAR(500),                 -- 脱敏后的简短错误摘要；禁止记录 API Key
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_ur_user_id (user_id),
-    INDEX idx_ur_created_at (created_at)
+    INDEX idx_ai_usage_records_user_id (user_id),
+    INDEX idx_ai_usage_records_created_at (created_at),
+    INDEX idx_ai_usage_records_feature (feature),
+    INDEX idx_ai_usage_records_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-### 建议
+### 方案选择
 
-- 仅做额度校验：选 A，简单高效。
-- 需要审计/统计/按功能分析用量：选 B，或 A+B（A 做快照、B 做流水）。
-- 实施时在 PR 中确定最终方案并更新本文件。
+- 最终采用 **A+B 结合**：A 做额度快照（高频读、O(1) 校验余量），B 做调用流水（审计 / 统计 / 按功能分析用量）。
+- 本阶段仅建表与 Entity/Mapper，扣费逻辑留待后续阶段。
 
 ---
 
@@ -163,4 +169,4 @@ CREATE TABLE IF NOT EXISTS ai_usage_records (
    └── PR 描述中列出 migration SQL + 用途说明
 ```
 
-> 这一步（Phase 1）只写文档，**不要**真的创建 `user_ai_settings` / `ai_usage_quota` / `ai_usage_records` 表。
+> Phase 1 阶段只写文档；`user_ai_settings` / `ai_usage_quota` / `ai_usage_records` 三张表已于 **Phase 3A** 真正落地（见 `init.sql`）。

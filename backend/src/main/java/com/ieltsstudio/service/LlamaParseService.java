@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 
+// TODO(future cleanup): migrate this legacy direct LlamaParse provider call to AiSettingsService + OpenAiCompatibleClient.
+// 当前为死代码（无任何调用方），备选解析链路未启用，Phase 5C-3 未纳入处理范围。
 @Slf4j
 @Service
 @RequiredArgsConstructor

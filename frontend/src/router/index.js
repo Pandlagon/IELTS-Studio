@@ -5,8 +5,9 @@ import { useAuthStore } from '@/stores/auth'
  * 路由配置
  *
  * meta 字段说明：
- * - requiresAuth: true  — 需要登录才能访问，未登录跳转到 /login
- * - guestOnly: true     — 仅游客可访问（如登录/注册页），已登录跳转到首页
+ * - requiresAuth: true   — 需要登录才能访问，未登录跳转到 /login
+ * - requiresAdmin: true  — 需要管理员角色，非管理员跳回首页
+ * - guestOnly: true      — 仅游客可访问（如登录/注册页），已登录跳转到首页
  */
 const routes = [
   {
@@ -67,6 +68,30 @@ const routes = [
     component: () => import('@/views/ProfileView.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/admin/users',
+    name: 'AdminUsers',
+    component: () => import('@/views/admin/AdminUsersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/quotas',
+    name: 'AdminQuotas',
+    component: () => import('@/views/admin/AdminQuotasView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/ai-usage',
+    name: 'AdminAiUsage',
+    component: () => import('@/views/admin/AdminAiUsageView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/admin/audit-logs',
+    name: 'AdminAuditLogs',
+    component: () => import('@/views/admin/AdminAuditLogsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
   // 未匹配的路径统一重定向到首页
   {
     path: '/:pathMatch(.*)*',
@@ -89,8 +114,9 @@ const router = createRouter({
  *
  * 登录验证逻辑：
  * 1. requiresAuth 页面：未登录则跳转到 /login，并携带 redirect 参数方便登录后回跳
- * 2. guestOnly 页面：已登录则跳转到首页
- * 3. 其他页面：直接放行
+ * 2. requiresAdmin 页面：非 ADMIN 用户跳回首页（仍依赖后端 /admin/** 鉴权兜底）
+ * 3. guestOnly 页面：已登录则跳转到首页
+ * 4. 其他页面：直接放行
  */
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
@@ -98,6 +124,9 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
     // 未登录，重定向到登录页，并记录目标路径
     next({ name: 'Login', query: { redirect: to.fullPath } })
+  } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    // 非管理员跳回首页；后端 /admin/** 接口仍会返回 403 兜底
+    next({ name: 'Home' })
   } else if (to.meta.guestOnly && authStore.isLoggedIn) {
     // 已登录用户不需要访问登录/注册页
     next({ name: 'Home' })

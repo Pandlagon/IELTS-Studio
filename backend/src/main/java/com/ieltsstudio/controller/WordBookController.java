@@ -231,10 +231,14 @@ public class WordBookController {
         if (words == null || words.isEmpty()) return Result.error("请至少选择 1 个单词");
         if (words.size() > 10) return Result.error("最多选择 10 个单词");
         try {
-            Map<String, Object> result = clozeService.generate(words, meanings, difficulty);
+            Map<String, Object> result = clozeService.generate(authUser.getId(), words, meanings, difficulty);
             return Result.success(result);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
-            return Result.error("生成完形填空失败：" + e.getMessage());
+            return Result.error("AI 服务暂时不可用，请稍后重试");
         }
     }
 
@@ -253,10 +257,14 @@ public class WordBookController {
             return Result.error("缺少必要参数");
         }
         try {
-            Map<String, Object> result = clozeService.check(passage, blanks, userAnswers);
+            Map<String, Object> result = clozeService.check(authUser.getId(), passage, blanks, userAnswers);
             return Result.success(result);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
-            return Result.error("批改失败：" + e.getMessage());
+            return Result.error("AI 服务暂时不可用，请稍后重试");
         }
     }
 }

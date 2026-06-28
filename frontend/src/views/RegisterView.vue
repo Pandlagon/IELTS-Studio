@@ -3,7 +3,7 @@
     <div class="auth-bg"></div>
     <div class="auth-container">
       <router-link to="/" class="auth-logo">
-        <span class="logo-icon">✦</span>
+        <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
         <span class="logo-text">IELTS Studio</span>
       </router-link>
 
@@ -87,7 +87,7 @@
       </div>
 
       <p class="back-home">
-        <router-link to="/" class="back-link">← 返回首页</router-link>
+        <router-link to="/" class="back-link"><i class="fa-solid fa-arrow-left"></i> 返回首页</router-link>
       </p>
     </div>
   </div>

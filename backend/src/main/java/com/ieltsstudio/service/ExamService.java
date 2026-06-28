@@ -122,7 +122,7 @@ public class ExamService {
         // 读取文件字节后交由异步服务处理（避免文件流在异步线程中已关闭）
         byte[] fileBytes = file.getBytes();
         String originalFilename = file.getOriginalFilename();
-        asyncParseService.parseAndSave(exam.getId(), fileBytes, originalFilename, parsePrecise, extractedText, type);
+        asyncParseService.parseAndSave(userId, exam.getId(), fileBytes, originalFilename, parsePrecise, extractedText, type);
 
         return exam;
     }
@@ -156,7 +156,7 @@ public class ExamService {
         if (bytesList.isEmpty()) {
             throw new RuntimeException("未选择图片文件");
         }
-        asyncParseService.parseAndSaveImages(exam.getId(), bytesList, nameList, parsePrecise, extractedText, type);
+        asyncParseService.parseAndSaveImages(userId, exam.getId(), bytesList, nameList, parsePrecise, extractedText, type);
         return exam;
     }
 

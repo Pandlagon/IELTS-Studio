@@ -10,9 +10,17 @@ frontend/node_modules/
 *.swp
 
 # ─── 环境变量文件（含密钥，严禁提交）───────────────────────────
+# 根目录 .env（后端/统一环境变量模板的实际填充值）
+.env
+.env.local
+.env.production
+# 前端环境变量
 frontend/.env
 frontend/.env.local
 frontend/.env.production
+
+# ─── 本地开发配置覆盖（含数据库密码等本地敏感信息）──────────────
+backend/src/main/resources/application-local.yml
 
 # ─── 系统文件 ───────────────────────────────────────────────
 .DS_Store

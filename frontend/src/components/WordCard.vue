@@ -2,7 +2,7 @@
   <div class="word-card" :class="{ 'is-flipping': flipping }">
     <div class="phonetic">
       {{ word.phonetic }}
-      <button class="play-btn" @click.stop="playWord(word.word)" title="播放发音">🔊</button>
+      <button class="play-btn" @click.stop="playWord(word.word)" title="播放发音"><i class="fa-solid fa-volume-high"></i></button>
     </div>
     <div class="word-text" :class="wordTextSizeClass">{{ word.word }}</div>
     <div v-if="!hasPosGroups && !meaningRevealed" class="pos-badge" :class="`pos-${word.posType}`">{{ word.pos }}</div>
@@ -21,7 +21,7 @@
           {{ word.example }}
           <span v-if="word.exampleTranslation" class="example-translation">{{ word.exampleTranslation }}</span>
         </span>
-        <button class="example-play-btn" @click.stop="playExampleSentence" title="播放例句">🔊</button>
+        <button class="example-play-btn" @click.stop="playExampleSentence" title="播放例句"><i class="fa-solid fa-volume-high"></i></button>
       </div>
     </div>
 
@@ -34,15 +34,15 @@
     <div class="card-actions">
       <template v-if="!meaningRevealed">
         <button class="btn-unknown" @click="revealMeaning('unknown')">
-          <span class="btn-icon">✗</span> 不认识
+          <span class="btn-icon"><i class="fa-solid fa-xmark"></i></span> 不认识
         </button>
         <button class="btn-know" @click="revealMeaning('know')">
-          <span class="btn-icon">✓</span> 认识了
+          <span class="btn-icon"><i class="fa-solid fa-check"></i></span> 认识了
         </button>
       </template>
       <template v-else>
         <button class="btn-next" @click="confirmAndNext">
-          <span class="btn-icon">→</span> 下一个
+          <span class="btn-icon"><i class="fa-solid fa-arrow-right"></i></span> 下一个
         </button>
       </template>
     </div>

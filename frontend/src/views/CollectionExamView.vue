@@ -48,7 +48,7 @@
             <button class="tb-btn" :disabled="translateBubble.loading" @click="doTranslate">
               {{ translateBubble.loading ? '翻译中...' : '翻译' }}
             </button>
-            <button class="tb-close" @click="hideTranslateBubble">×</button>
+            <button class="tb-close" @click="hideTranslateBubble"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div v-if="translateBubble.translation" class="tb-result">
             <div class="tb-translation">{{ translateBubble.translation }}</div>
@@ -60,7 +60,7 @@
         <div v-if="currentIsWrite" class="write-task-body" :style="{ fontSize: fontSize + 'px' }">
           <div v-if="currentVisual.hasVisual" class="write-visual-panel">
             <div class="wvp-header">
-              <div class="wvp-title">📊 图表数据可视化</div>
+              <div class="wvp-title"><i class="fa-solid fa-chart-column"></i> 图表数据可视化</div>
               <div class="wvp-sub" v-if="currentVisual.chartType">{{ currentVisual.chartType }}</div>
             </div>
             <div v-if="currentVisual.summary.length" class="wvp-summary">
@@ -108,7 +108,7 @@
             <button class="tb-btn" :disabled="translateBubble.loading" @click="doTranslate">
               {{ translateBubble.loading ? '翻译中...' : '翻译' }}
             </button>
-            <button class="tb-close" @click="hideTranslateBubble">×</button>
+            <button class="tb-close" @click="hideTranslateBubble"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div v-if="translateBubble.translation" class="tb-result">
             <div class="tb-translation">{{ translateBubble.translation }}</div>
@@ -131,7 +131,7 @@
                 :class="{ active: hintQId === question.globalKey }"
                 @click.stop="toggleHint(question)"
                 :title="question.type === 'write' ? '写作提示' : '查看原文定位'"
-              >💡</button>
+              ><i class="fa-solid fa-lightbulb"></i></button>
             </div>
 
             <!-- TFNG -->
@@ -152,7 +152,7 @@
             <template v-else-if="question.type === 'mcq'">
               <p class="q-text">{{ question.text }}</p>
               <div class="mcq-collapse-toggle" @click="toggleMcqCollapse(question.globalKey)">
-                <span>{{ collapsedMcq.has(question.globalKey) ? '▶ 展开选项' : '▼ 收起选项' }}</span>
+                <span><i :class="collapsedMcq.has(question.globalKey) ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'"></i> {{ collapsedMcq.has(question.globalKey) ? '展开选项' : '收起选项' }}</span>
               </div>
               <div class="mcq-options" v-show="!collapsedMcq.has(question.globalKey) || getAnswer(question.globalKey)">
                 <button
@@ -218,13 +218,13 @@
               </div>
               <!-- Write hint panel -->
               <div v-if="hintQId === question.globalKey" class="write-hint-panel">
-                <div class="hint-panel-title">💡 写作思路提示</div>
+                <div class="hint-panel-title"><i class="fa-solid fa-lightbulb"></i> 写作思路提示</div>
                 <div v-if="question.answer" class="hint-points">
-                  <div class="hint-section-label">📝 写作思路与要点</div>
+                  <div class="hint-section-label"><i class="fa-solid fa-pen-to-square"></i> 写作思路与要点</div>
                   <p style="white-space: pre-line;">{{ question.answer }}</p>
                 </div>
                 <div v-if="question.explanation" class="hint-criteria">
-                  <div class="hint-section-label">✅ 评分维度提示</div>
+                  <div class="hint-section-label"><i class="fa-solid fa-circle-check"></i> 评分维度提示</div>
                   <p style="white-space: pre-line;">{{ question.explanation }}</p>
                 </div>
               </div>
@@ -294,16 +294,16 @@
     <!-- FAB Group -->
     <div class="exam-fabs">
       <button class="fab-minimize-btn" @click.stop="showFabs = !showFabs" :title="showFabs ? '隐藏工具栏' : '显示工具栏'">
-        {{ showFabs ? '✕' : '🛠️' }}
+        <i :class="showFabs ? 'fa-solid fa-xmark' : 'fa-solid fa-screwdriver-wrench'"></i>
       </button>
       <template v-if="showFabs">
       <!-- 1. Translate FAB -->
       <div class="translate-fab" :class="{ active: translateMode }">
         <div class="fab-row">
           <button class="fab-toggle tl-toggle" @click.stop="toggleTranslate" :title="translateMode ? '退出翻译模式' : '翻译'">
-            <span class="fab-icon">🌐</span>
-            <span class="fab-label">{{ translateMode ? '退出翻译' : '翻译' }}</span>
-          </button>
+          <span class="fab-icon"><i class="fa-solid fa-globe"></i></span>
+          <span class="fab-label">{{ translateMode ? '退出翻译' : '翻译' }}</span>
+        </button>
         </div>
       </div>
       <!-- 2. AI Assistant FAB -->
@@ -313,13 +313,13 @@
             :class="{ 'ai-maximized': aiMaximized }"
             :style="!aiMaximized ? { left: aiPos.x + 'px', top: aiPos.y + 'px', width: aiSize.w + 'px', height: aiSize.h + 'px' } : {}">
             <div class="ai-chat-header" @mousedown.prevent="startDrag">
-              <span>🤖 AI 助手</span>
+              <span><i class="fa-solid fa-robot"></i> AI 助手</span>
               <div class="ai-header-actions">
                 <button class="ai-chat-btn" @click.stop="aiMaximized = !aiMaximized" :title="aiMaximized ? '还原' : '放大'">
                   <svg v-if="!aiMaximized" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
                   <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="7" width="14" height="14" rx="1"/><path d="M9 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2"/></svg>
                 </button>
-                <button class="ai-chat-btn" @click.stop="aiChatOpen = false">×</button>
+                <button class="ai-chat-btn" @click.stop="aiChatOpen = false"><i class="fa-solid fa-xmark"></i></button>
               </div>
             </div>
             <div class="ai-chat-messages" ref="aiChatMessagesRef">
@@ -345,9 +345,9 @@
         </transition>
         <div class="fab-row">
           <button class="fab-toggle ai-toggle" @click.stop="aiChatOpen = !aiChatOpen" title="AI 助手">
-            <span class="fab-icon">🤖</span>
-            <span class="fab-label">{{ aiChatOpen ? '关闭助手' : 'AI 助手' }}</span>
-          </button>
+          <span class="fab-icon"><i class="fa-solid fa-robot"></i></span>
+          <span class="fab-label">{{ aiChatOpen ? '关闭助手' : 'AI 助手' }}</span>
+        </button>
         </div>
       </div>
       <!-- 3. Highlight FAB -->
@@ -363,16 +363,16 @@
                 :style="c.value !== ERASER_VALUE ? { background: c.value } : {}"
                 :title="c.name"
                 @click.stop="highlightColor = c.value; showColorPicker = false"
-              >{{ c.value === ERASER_VALUE ? '🧹' : '' }}</button>
+              ><i v-if="c.value === ERASER_VALUE" class="fa-solid fa-eraser"></i></button>
             </div>
           </div>
         </transition>
         <div class="fab-row">
-          <button v-if="highlightMode" class="color-dot-btn" :class="{ eraser: highlightColor === ERASER_VALUE }" :style="highlightColor !== ERASER_VALUE ? { background: highlightColor } : {}" @click.stop="showColorPicker = !showColorPicker" title="选择颜色">{{ highlightColor === ERASER_VALUE ? '🧹' : '' }}</button>
-          <button class="fab-toggle hl-toggle" @click.stop="toggleHighlight" :title="highlightMode ? '退出高亮模式' : '划重点'">
-            <span class="fab-icon">📌</span>
-            <span class="fab-label">{{ highlightMode ? '退出划线' : '划重点' }}</span>
-          </button>
+          <button v-if="highlightMode" class="color-dot-btn" :class="{ eraser: highlightColor === ERASER_VALUE }" :style="highlightColor !== ERASER_VALUE ? { background: highlightColor } : {}" @click.stop="showColorPicker = !showColorPicker" title="选择颜色"><i v-if="highlightColor === ERASER_VALUE" class="fa-solid fa-eraser"></i></button>
+        <button class="fab-toggle hl-toggle" @click.stop="toggleHighlight" :title="highlightMode ? '退出高亮模式' : '划重点'">
+          <span class="fab-icon"><i class="fa-solid fa-thumbtack"></i></span>
+          <span class="fab-label">{{ highlightMode ? '退出划线' : '划重点' }}</span>
+        </button>
         </div>
       </div>
       <!-- 4. Word Collector FAB -->
@@ -386,7 +386,7 @@
             <div class="collected-tags">
               <span v-for="w in collectedWords" :key="w" class="collected-tag">
                 {{ w }}
-                <button class="tag-del" @click.stop="removeCollected(w)">×</button>
+                <button class="tag-del" @click.stop="removeCollected(w)"><i class="fa-solid fa-xmark"></i></button>
               </span>
             </div>
           </div>
@@ -396,10 +396,10 @@
             {{ flushing ? '发送中...' : `加入生词本 (${collectedWords.size})` }}
           </button>
           <button class="fab-toggle" @click.stop="toggleCollect" :title="collectMode ? '退出选词模式' : '点击选词加入生词本'">
-            <span class="fab-icon">🔖</span>
-            <span class="fab-label">{{ collectMode ? '退出选词' : '选词入册' }}</span>
-            <span v-if="collectMode && collectedWords.size > 0" class="fab-badge">{{ collectedWords.size }}</span>
-          </button>
+          <span class="fab-icon"><i class="fa-solid fa-bookmark"></i></span>
+          <span class="fab-label">{{ collectMode ? '退出选词' : '选词入册' }}</span>
+          <span v-if="collectMode && collectedWords.size > 0" class="fab-badge">{{ collectedWords.size }}</span>
+        </button>
         </div>
       </div>
       </template>
@@ -423,7 +423,7 @@
     <el-dialog v-model="showConfirm" width="400px" :close-on-click-modal="false" align-center>
       <template #header>
         <div class="dialog-header">
-          <span class="dialog-header-icon">📝</span>
+          <i class="fa-solid fa-pen-to-square dialog-header-icon"></i>
           <span>确认提交</span>
         </div>
       </template>

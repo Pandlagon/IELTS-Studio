@@ -24,11 +24,11 @@
 
         <!-- Collections Section -->
         <div v-if="collections.length > 0" class="collections-section">
-          <h2 class="section-title">📁 试卷集</h2>
+          <h2 class="section-title"><i class="fa-solid fa-folder"></i> 试卷集</h2>
           <div class="collection-grid">
             <div v-for="col in pagedCollections" :key="col.id" class="collection-card card">
               <div class="collection-card-header">
-                <div class="collection-icon">📂</div>
+                <div class="collection-icon"><i class="fa-solid fa-folder-open"></i></div>
                 <button class="btn-icon-delete" title="删除试卷集" @click.stop="confirmDeleteCollection(col.id)">
                   <el-icon><Delete /></el-icon>
                 </button>
@@ -36,7 +36,7 @@
               <h3 class="collection-title">{{ col.title }}</h3>
               <p class="collection-desc">{{ col.description || '暂无描述' }}</p>
               <div class="collection-meta">
-                <span class="meta-item">📄 {{ col.examCount || 0 }} 套试卷</span>
+                <span class="meta-item"><i class="fa-solid fa-file-lines"></i> {{ col.examCount || 0 }} 套试卷</span>
               </div>
               <div class="collection-card-footer">
                 <button class="btn-secondary btn-sm" @click="openCollectionDetail(col.id)">
@@ -50,13 +50,13 @@
           </div>
           <!-- Collection Pagination -->
           <div v-if="collectionTotalPages > 1" class="pagination">
-            <button class="page-btn" :disabled="collectionPage === 1" @click="collectionPage--">&lsaquo;</button>
+            <button class="page-btn" :disabled="collectionPage === 1" @click="collectionPage--"><i class="fa-solid fa-chevron-left"></i></button>
             <button
               v-for="p in collectionTotalPages" :key="'cp'+p"
               class="page-btn" :class="{ active: collectionPage === p }"
               @click="collectionPage = p"
             >{{ p }}</button>
-            <button class="page-btn" :disabled="collectionPage === collectionTotalPages" @click="collectionPage++">&rsaquo;</button>
+            <button class="page-btn" :disabled="collectionPage === collectionTotalPages" @click="collectionPage++"><i class="fa-solid fa-chevron-right"></i></button>
           </div>
         </div>
 
@@ -200,7 +200,7 @@
                   <option value="listening" disabled>听力（暂不支持）</option>
                   <option value="writing">写作</option>
                 </select>
-                <span v-if="uploadForm.type === 'listening'" class="field-warn">⚠️ 听力功能暂不可用，请选择其他题型</span>
+                <span v-if="uploadForm.type === 'listening'" class="field-warn"><i class="fa-solid fa-triangle-exclamation"></i> 听力功能暂不可用，请选择其他题型</span>
               </div>
               <div class="form-group">
                 <label class="form-label">答题时间（分钟）</label>
@@ -219,27 +219,27 @@
                     type="checkbox" 
                     v-model="uploadForm.parsePrecise" 
                     class="parse-mode-cb" 
-                    :disabled="uploadForm.type !== 'writing'"
+                    :disabled="preciseParseDisabled"
                   />
                   <span class="parse-mode-text">
-                    <strong>精准解析（Qwen 视觉解析）</strong>
-                    <span class="parse-mode-hint">适合扫描版、多栏布局、图形图片较多的试卷，解析耗时较长</span>
+                    <strong>精准解析（视觉模型）</strong>
+                    <span class="parse-mode-hint">适合扫描版 PDF、图片、多栏布局、图表/流程图题；阅读/写作均可使用，消耗更多 credits。</span>
                   </span>
                 </label>
-                <span v-if="uploadForm.type !== 'writing'" class="field-warn">⚠️ 精准解析仅支持写作题型</span>
+                <span v-if="preciseParseDisabled" class="field-warn"><i class="fa-solid fa-triangle-exclamation"></i> 听力暂不支持精准解析；阅读/写作可用于扫描版、图片、多栏、图表场景。</span>
               </div>
             </div>
 
             <div class="upload-tip">
-              💡 推荐上传 <strong>Word (.docx)</strong> 或文字可选中的 PDF；扫描版、图片版试卷建议开启<strong>精准解析</strong>
+              <i class="fa-solid fa-lightbulb"></i> 推荐上传 <strong>Word (.docx)</strong> 或文字可选中的 PDF；扫描版、图片版试卷建议开启<strong>精准解析</strong>
             </div>
 
             <div class="upload-tip upload-tip-warning">
-              ⚠️ 普通解析更适合<strong>纯文字型试卷</strong>；若文件包含表格、流程图、插图、坐标图或扫描页面，请优先开启<strong>精准解析</strong>
+              <i class="fa-solid fa-triangle-exclamation"></i> 普通解析更适合<strong>纯文字型试卷</strong>；若文件包含表格、流程图、插图、坐标图或扫描页面，请优先开启<strong>精准解析</strong>
             </div>
 
             <div class="upload-tip upload-tip-info">
-              📌 建议按<strong>题型分别上传</strong>：例如阅读单独上传、写作单独上传，不要将多种题型混在同一文件中
+              <i class="fa-solid fa-thumbtack"></i> 建议按<strong>题型分别上传</strong>：例如阅读单独上传、写作单独上传，不要将多种题型混在同一文件中
             </div>
 
             <div class="upload-actions">
@@ -320,7 +320,7 @@
               <span class="exam-date">{{ exam.createdAt }}</span>
               <div class="exam-actions">
                 <div v-if="confirmDeleteId === exam.id" class="delete-confirm-wrapper">
-                  <div class="delete-warning">⚠️删除后将清除该试卷的答题和历史记录</div>
+                  <div class="delete-warning"><i class="fa-solid fa-triangle-exclamation"></i>删除后将清除该试卷的答题和历史记录</div>
                   <div class="delete-buttons">
                     <button
                       class="btn-danger-confirm"
@@ -354,18 +354,18 @@
 
         <!-- Exam Pagination -->
         <div v-if="!loadingExams && filteredExams.length && examTotalPages > 1" class="pagination">
-          <button class="page-btn" :disabled="examPage === 1" @click="examPage--">&lsaquo;</button>
+          <button class="page-btn" :disabled="examPage === 1" @click="examPage--"><i class="fa-solid fa-chevron-left"></i></button>
           <button
             v-for="p in examTotalPages" :key="'ep'+p"
             class="page-btn" :class="{ active: examPage === p }"
             @click="examPage = p"
           >{{ p }}</button>
-          <button class="page-btn" :disabled="examPage === examTotalPages" @click="examPage++">&rsaquo;</button>
+          <button class="page-btn" :disabled="examPage === examTotalPages" @click="examPage++"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
 
         <!-- Empty State -->
         <div v-else-if="!loadingExams && !filteredExams.length" class="empty-state" style="margin-top:0">
-          <div class="empty-icon">📄</div>
+          <div class="empty-icon"><i class="fa-solid fa-file-lines"></i></div>
           <p class="empty-title">暂无试卷</p>
           <p class="empty-desc">上传您的第一份试卷开始练习</p>
           <button class="btn-primary" @click="showUpload = true">上传试卷</button>
@@ -403,6 +403,16 @@ const tabCounts = ref({ all: 0, reading: null, listening: null, writing: null, m
 const uploadForm = ref({ title: '', type: 'reading', duration: 60, description: '', parsePrecise: false })
 const uploadTitleDup = ref(false)
 const collectionTitleDup = ref(false)
+const preciseParseDisabled = computed(() => uploadForm.value.type === 'listening')
+
+watch(
+  () => uploadForm.value.type,
+  (type) => {
+    if (type === 'listening') {
+      uploadForm.value.parsePrecise = false
+    }
+  }
+)
 
 const tabs = [
   { label: '全部', value: 'all' },

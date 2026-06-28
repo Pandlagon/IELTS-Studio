@@ -172,16 +172,21 @@ public class ExamController {
      * <p>评分维度：TR（任务回应）、CC（连贯衔接）、LR（词汇丰富度）、GRA（语法范围）
      */
     @PostMapping("/grade-writing")
-    public Result<?> gradeWriting(@RequestBody Map<String, Object> req) {
+    public Result<?> gradeWriting(@RequestBody Map<String, Object> req,
+                                  @AuthenticationPrincipal AuthUser authUser) {
         try {
             String taskPrompt = (String) req.getOrDefault("taskPrompt", "");
             String userEssay  = (String) req.getOrDefault("userEssay", "");
             int wordLimit = req.get("wordLimit") instanceof Number
                     ? ((Number) req.get("wordLimit")).intValue() : 250;
-            Map<String, Object> result = aiParseService.gradeWriting(taskPrompt, userEssay, wordLimit);
+            Map<String, Object> result = aiParseService.gradeWriting(authUser.getId(), taskPrompt, userEssay, wordLimit);
             return Result.success(result);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
-            return Result.error("评分失败: " + e.getMessage());
+            return Result.error("AI 服务暂时不可用，请稍后重试");
         }
     }
 
@@ -193,9 +198,13 @@ public class ExamController {
     public Result<?> translate(@Valid @RequestBody TranslateRequest req,
                                @AuthenticationPrincipal AuthUser authUser) {
         try {
-            return Result.success(aiParseService.translateWithContext(req.getPassage(), req.getSelectedText()));
+            return Result.success(aiParseService.translateWithContext(authUser.getId(), req.getPassage(), req.getSelectedText()));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
-            return Result.error("翻译失败: " + e.getMessage());
+            return Result.error("AI 服务暂时不可用，请稍后重试");
         }
     }
 
@@ -208,11 +217,16 @@ public class ExamController {
                             @AuthenticationPrincipal AuthUser authUser) {
         try {
             String answer = aiParseService.chatWithContext(
+                    authUser.getId(),
                     req.getOrDefault("examContext", ""),
                     req.getOrDefault("question", ""));
             return Result.success(Map.of("answer", answer));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
-            return Result.error("AI 助手回答失败: " + e.getMessage());
+            return Result.error("AI 服务暂时不可用，请稍后重试");
         }
     }
 }

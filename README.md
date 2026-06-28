@@ -141,9 +141,7 @@ ielts-studio/
         │   └── WordBookController.java    # 词书管理
         ├── service/
         │   ├── AiParseService.java        # DeepSeek（解析/评分/助手/翻译）
-        │   ├── QwenAiParseService.java    # Qwen 视觉解析（精准模式）
-        │   ├── QwenDocumentParseService.java # Qwen 文档解析
-        │   ├── LlamaParseService.java     # LlamaParse 解析（备选）
+        │   ├── QwenAiParseService.java    # Qwen / MiMO 视觉解析（精准模式）
         │   ├── AsyncParseService.java     # 异步解析调度
         │   ├── ExamService.java           # 试卷核心逻辑
         │   ├── ExamCollectionService.java # 试卷集逻辑
@@ -169,9 +167,9 @@ ielts-studio/
 
 | 依赖 | 版本要求 | 下载地址 |
 |---|---|---|
-| JDK | 17+ | https://adoptium.net |
+| JDK | 21 | https://adoptium.net |
 | Maven | 3.9+ | https://maven.apache.org |
-| Node.js | 18+ | https://nodejs.org |
+| Node.js | 20 LTS（最低 18+） | https://nodejs.org |
 | MySQL | 8.0+ | https://dev.mysql.com/downloads |
 
 > Redis 和 MinIO 为可选依赖，不配置时相关功能会降级，不影响核心流程。
@@ -193,34 +191,40 @@ mysql -u root -p < backend/src/main/resources/db/init.sql
 
 ### 4. 配置后端
 
-编辑 `backend/src/main/resources/application.yml`：
+复制 `.env.example` 为 `.env` 并填入实际值（`.env` 已在 `.gitignore` 中，不会被提交）：
 
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/ielts_studio?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: root              # 你的 MySQL 用户名
-    password: your_password     # 你的 MySQL 密码
-
-ai:
-  deepseek:
-    api-key: your_deepseek_key  # DeepSeek API Key（必填）
-
-qwen:
-  api-key: your_dashscope_key  # DashScope API Key（精准解析，可选）
+```bash
+cp .env.example .env
 ```
+
+关键变量示例（完整清单见 `.env.example` 与 [docs/deployment-config.md](./docs/deployment-config.md)）：
+
+```env
+DB_URL=jdbc:mysql://localhost:3306/ielts_studio?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+DB_USERNAME=root
+DB_PASSWORD=your_local_password
+JWT_SECRET=change-me-please-use-64-random-chars-or-more
+AI_KEY_ENCRYPTION_SECRET=change-me-please-use-32-random-chars-or-more
+DEEPSEEK_API_KEY=your_deepseek_key          # BUILTIN 模式必填
+AI_PRECISE_PROVIDER=mimo                     # 精准解析提供方：mimo 或 qwen
+MIMO_API_KEY=your_mimo_key                   # AI_PRECISE_PROVIDER=mimo 时必填
+QWEN_API_KEY=your_qwen_key                   # AI_PRECISE_PROVIDER=qwen 时必填
+```
+
+后端 `application.yml` 已通过 `spring.config.import: optional:file:../.env[.properties]` 自动加载根目录 `.env`，从 `backend/` 目录运行 `mvn spring-boot:run` 即可，**无需修改 `application.yml`**。
+
+> ⚠️ 生产环境必须通过系统环境变量注入敏感配置，不要依赖 `.env` 文件或 `application.yml` 默认值。详见 [docs/deployment-config.md](./docs/deployment-config.md)。
 
 **获取 API Key：**
 - **DeepSeek**：[platform.deepseek.com](https://platform.deepseek.com)
-- **DashScope（Qwen）**：[dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
+- **通义千问 Qwen / DashScope**：[dashscope.aliyuncs.com](https://dashscope.aliyuncs.com)
 
 ### 5. （可选）启用 Redis 缓存
-- 编辑 `backend/src/main/resources/application.yml` 中的 Redis 区域（host/port/password 按需修改）。
-- 启动时设置环境变量 `APP_REDIS_ENABLED=true` 启用缓存；不设置则自动降级为本地内存缓存。
-- 启动后可在 redis-cli 验证：
-  ```bash
-  redis-cli KEYS "books::*" "entries::*" "studyState::*" "ielts:ingest:progress:*"
-  ```
+- 在 `.env` 中设置 `APP_REDIS_ENABLED=true`，并按需填写 `SPRING_DATA_REDIS_HOST/PORT/PASSWORD/DATABASE`。
+- 不配置或设为 `false` 时使用单机内存限流，应用不会连接 Redis，单实例本地开发无需启动 Redis。
+- 多实例部署必须设为 `true`，否则各实例独立计数，rate limit 不共享。
+- Redis 不可用时自动 fallback 到内存限流，不影响主流程。
+- 详细行为见 [docs/deployment-config.md](./docs/deployment-config.md) 第 5 节。
 
 ### 6. 启动后端
 
@@ -247,23 +251,58 @@ npm run dev
 
 ## 环境变量说明
 
-### 后端（application.yml）
+IELTS Studio 通过环境变量管理生产配置，避免在 `application.yml` 中维护明文密钥。Authoritative references：
 
-| 配置项 | 说明 | 必填 |
-|---|---|---|
-| `spring.datasource.username` | MySQL 用户名 | ✅ |
-| `spring.datasource.password` | MySQL 密码 | ✅ |
-| `ai.deepseek.api-key` | DeepSeek API Key | ✅ |
-| `qwen.api-key` | DashScope API Key | 可选 |
-| `jwt.secret` | JWT 签名密钥 | ✅（生产环境必须更换） |
-| `app.redis.enabled` | 是否启用 Redis 缓存（true/false） | 可选，默认 false |
-| `spring.data.redis.*` | Redis 连接 | 可选 |
+- [.env.example](./.env.example) — 环境变量模板，复制为 `.env` 后填入实际值（`.env` 已在 `.gitignore` 中）
+- [docs/deployment-config.md](./docs/deployment-config.md) — 完整部署配置说明（必填 / 可选变量、Redis 开关、加密密钥、生产安全 checklist）
+- [docs/manual-deployment-runbook.md](./docs/manual-deployment-runbook.md) — 普通环境部署与本地调试 Runbook
+- [docs/release-checklist.md](./docs/release-checklist.md) — 发布检查项、部署方式、数据库迁移、回滚说明
 
-### 前端（.env.local）
+常用变量：
 
-| 变量名 | 说明 | 默认值 |
-|---|---|---|
-| `VITE_API_BASE_URL` | 后端 API 地址 | `/api` |
+- `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`
+- `JWT_SECRET`
+- `AI_KEY_ENCRYPTION_SECRET`
+- `INIT_ADMIN_USERNAME` / `INIT_ADMIN_EMAIL` / `INIT_ADMIN_PASSWORD`
+- `CORS_ALLOWED_ORIGINS`
+- `APP_REDIS_ENABLED`（默认 `false`，多实例部署需设为 `true`）
+- `DEEPSEEK_API_KEY` / `MIMO_API_KEY` / `QWEN_API_KEY`
+- `VITE_API_BASE_URL`
+
+> ⚠️ 不要提交真实 API Key / 数据库密码 / JWT secret / 加密密钥到 Git；生产环境必须通过系统环境变量注入。
+
+---
+
+## Deployment configuration
+
+生产部署所需的环境变量、安全注意事项与本地开发示例见：
+
+- **[docs/deployment-config.md](./docs/deployment-config.md)**：完整部署配置说明（必填 / 可选变量、Redis 开关、加密密钥、生产安全 checklist）
+- **[.env.example](./.env.example)**：环境变量模板，复制为 `.env` 后填入实际值（`.env` 已在 `.gitignore` 中）
+
+> ⚠️ 生产环境必须通过环境变量注入 `JWT_SECRET`、`DB_PASSWORD`、`AI_KEY_ENCRYPTION_SECRET`、`CORS_ALLOWED_ORIGINS` 等敏感配置，禁止依赖 `application.yml` 中的开发默认值。
+
+---
+
+## CI and release checklist
+
+GitHub Actions 会在每次 push / pull request 时自动运行 backend tests、frontend build 与基础安全 grep 检查（见 [.github/workflows/ci.yml](./.github/workflows/ci.yml)）。
+
+当前阶段 CI 只负责验证与产出临时构建 artifact，**不执行自动部署**——服务器部署由维护者手动执行。详见：
+
+- [docs/deployment-config.md](./docs/deployment-config.md)：部署环境变量与生产安全 checklist
+- [docs/release-checklist.md](./docs/release-checklist.md)：发布检查项、部署方式、数据库迁移、回滚说明
+- [docs/ai-provider-smoke-test.md](./docs/ai-provider-smoke-test.md)：发布后手动 smoke test checklist
+
+---
+
+## Deployment and local development
+
+For non-Docker local development and manual deployment, see:
+
+- [docs/manual-deployment-runbook.md](./docs/manual-deployment-runbook.md)：普通环境部署与本地调试 Runbook（本地启动 / 生产构建 / CORS / Smoke test / 常见问题排查）
+- [docs/deployment-config.md](./docs/deployment-config.md)：完整部署配置说明（必填 / 可选变量、Redis 开关、加密密钥、生产安全 checklist）
+- [docs/release-checklist.md](./docs/release-checklist.md)：发布检查项、部署方式、数据库迁移、回滚说明
 
 ---
 
@@ -284,8 +323,10 @@ npm run dev
 适合双栏/扫描版/图片版试卷。
 
 ```
-PDF 逐页渲染为图片 → Qwen 视觉模型识别 → AI 结构化解析 → 合并
+PDF 逐页渲染为图片 → MiMO / Qwen 视觉模型识别 → AI 结构化解析 → 合并
 ```
+
+> 默认走 MiMO（`AI_PRECISE_PROVIDER=mimo`），可在 `.env` / 环境变量中切换为 Qwen；用户也可在前端 Profile 页面切换为自填 Key（USER 模式）。
 
 ✅ 解析质量高 · ⚠️ 耗时较长，建议解析后人工复核
 
@@ -358,13 +399,14 @@ PDF 逐页渲染为图片 → Qwen 视觉模型识别 → AI 结构化解析 →
 - 检查用户名密码、确认已执行 `init.sql`、检查 MySQL 时区设置
 
 **试卷解析后题目为空？**
-- 检查 `ai.deepseek.api-key` 配置
+- BUILTIN 模式：确认 `DEEPSEEK_API_KEY` 已注入（或在前端 Profile 页面切换为 USER 模式自填 Key）
 - 后端日志搜索 `[AsyncParseService]`
 - 尝试切换精准解析模式
 
 **精准解析无结果？**
-- 检查 `qwen.api-key` 配置
-- 确认网络可访问 `dashscope.aliyuncs.com`
+- 检查 `AI_PRECISE_PROVIDER` 设置（`mimo` 或 `qwen`）
+- 选 `mimo` 时确认 `MIMO_API_KEY` 已注入；选 `qwen` 时确认 `QWEN_API_KEY` 已注入
+- 确认网络可访问对应 provider 域名
 
 **写作评分失败？**
 - 确认 DeepSeek API Key 有效
@@ -397,6 +439,16 @@ npm run build        # 生产构建
 mvn spring-boot:run       # 启动
 mvn clean package         # 打包为 jar
 ```
+
+### Agent 开发说明
+
+如果使用 Claude Code、GLM、Codex 或其他 AI coding agent 参与开发，请先阅读：
+
+- [AGENTS.md](./AGENTS.md)
+- [docs/agent-development.md](./docs/agent-development.md)
+- [docs/ai-provider-architecture.md](./docs/ai-provider-architecture.md)
+- [docs/security-and-quota-plan.md](./docs/security-and-quota-plan.md)
+- [docs/database-change-guide.md](./docs/database-change-guide.md)
 
 ---
 

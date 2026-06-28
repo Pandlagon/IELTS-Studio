@@ -49,7 +49,7 @@
                 class="book-tab-del"
                 title="删除词书"
                 @click.stop="confirmDeleteBook(book)"
-              >×</button>
+              ><i class="fa-solid fa-xmark"></i></button>
             </div>
           </div>
           <button class="btn-ghost btn-sm" @click="showCreateBook = true">
@@ -166,7 +166,7 @@
           </div>
 
           <div class="keyboard-hint">
-            <span>← →</span> 切换卡片 &nbsp;·&nbsp; <span>↑</span> 认识 &nbsp;·&nbsp; <span>↓</span> 不认识 &nbsp;·&nbsp; <span>Enter/Space</span> 下一个
+            <span><i class="fa-solid fa-arrow-left"></i> <i class="fa-solid fa-arrow-right"></i></span> 切换卡片 &nbsp;·&nbsp; <span><i class="fa-solid fa-arrow-up"></i></span> 认识 &nbsp;·&nbsp; <span><i class="fa-solid fa-arrow-down"></i></span> 不认识 &nbsp;·&nbsp; <span>Enter/Space</span> 下一个
           </div>
         </div>
 
@@ -185,7 +185,7 @@
                 <div class="spell-answer-content">
                   <div v-if="activeSpellWord?.phonetic" class="spell-answer-phonetic">
                     {{ activeSpellWord.phonetic }}
-                    <button class="play-btn-sm" @click="playWord(activeSpellWord.word)" title="播放发音">🔊</button>
+                    <button class="play-btn-sm" @click="playWord(activeSpellWord.word)" title="播放发音"><i class="fa-solid fa-volume-high"></i></button>
                   </div>
                   <div class="spell-answer-word" :class="spellAnswerWordSizeClass">{{ activeSpellWord.word }}</div>
                   <div class="spell-answer-meaning-block">
@@ -202,11 +202,11 @@
                       {{ activeSpellWord.example }}
                       <span v-if="activeSpellWord?.exampleTranslation" class="example-translation">{{ activeSpellWord.exampleTranslation }}</span>
                     </span>
-                    <button class="example-play-btn" @click="playExampleSentence" title="播放例句">🔊</button>
+                    <button class="example-play-btn" @click="playExampleSentence" title="播放例句"><i class="fa-solid fa-volume-high"></i></button>
                   </div>
                 </div>
                 <button class="btn-primary spell-next-btn" @click="spellNext">
-                  → 下一个
+                  <i class="fa-solid fa-arrow-right"></i> 下一个
                 </button>
               </div>
               <div v-else class="spell-card card">
@@ -229,7 +229,7 @@
                 </div>
                 <!-- Audio replay button -->
                 <button class="spell-play-btn" @click="playWord(wordStore.currentWord.word)" title="再听一次">
-                  🔊 再听一次
+                  <i class="fa-solid fa-volume-high"></i> 再听一次
                 </button>
                 <!-- Input area -->
                 <div class="spell-input-area">
@@ -283,7 +283,7 @@
           </div>
 
           <div class="keyboard-hint">
-            <span>Enter</span> 确认拼写 &nbsp;·&nbsp; <span>← →</span> 切换单词 &nbsp;·&nbsp; <span>↑</span> 重播发音 &nbsp;·&nbsp; <span>↓</span> 显示答案
+            <span>Enter</span> 确认拼写 &nbsp;·&nbsp; <span><i class="fa-solid fa-arrow-left"></i> <i class="fa-solid fa-arrow-right"></i></span> 切换单词 &nbsp;·&nbsp; <span><i class="fa-solid fa-arrow-up"></i></span> 重播发音 &nbsp;·&nbsp; <span><i class="fa-solid fa-arrow-down"></i></span> 显示答案
           </div>
         </div>
 
@@ -311,7 +311,7 @@
                 <div class="word-row-word">{{ word.word }}</div>
                 <div class="word-row-phonetic">
                   {{ word.phonetic }}
-                  <button class="play-btn-sm" @click.stop="playWord(word.word)" title="播放发音">🔊</button>
+                  <button class="play-btn-sm" @click.stop="playWord(word.word)" title="播放发音"><i class="fa-solid fa-volume-high"></i></button>
                 </div>
               </div>
               <div class="word-row-center">
@@ -352,7 +352,7 @@
                 <option :value="20">20 / 页</option>
                 <option :value="50">50 / 页</option>
               </select>
-              <button class="page-nav-btn" :disabled="listPage <= 1" @click="listPage--">‹</button>
+              <button class="page-nav-btn" :disabled="listPage <= 1" @click="listPage--"><i class="fa-solid fa-chevron-left"></i></button>
               <button
                 v-for="page in visibleListPages"
                 :key="page"
@@ -362,7 +362,7 @@
               >
                 {{ page }}
               </button>
-              <button class="page-nav-btn" :disabled="listPage >= listTotalPages" @click="listPage++">›</button>
+              <button class="page-nav-btn" :disabled="listPage >= listTotalPages" @click="listPage++"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
           </div>
         </div>
@@ -375,7 +375,7 @@
 
         <!-- Empty book state -->
         <div v-else-if="!wordStore.loadingEntries && wordStore.totalWords === 0" class="empty-book">
-          <div class="empty-book-icon">📖</div>
+          <div class="empty-book-icon"><i class="fa-solid fa-book-open"></i></div>
           <p class="empty-book-title">词书暂无单词</p>
           <p class="empty-book-desc">上传 PDF 或 Word 文件，AI 将自动提取词汇并生成词条</p>
           <button class="btn-primary" @click="showUpload = true">上传单词文件</button>
@@ -397,7 +397,7 @@
   <el-dialog v-model="showCreateBook" width="420px" :close-on-click-modal="false">
     <template #header>
       <div class="dialog-header">
-        <span class="dialog-header-icon">📚</span>
+        <i class="fa-solid fa-book-open-reader dialog-header-icon"></i>
         <span>新建词书</span>
       </div>
     </template>
@@ -419,7 +419,7 @@
   <el-dialog v-model="showEditEntry" width="480px" :close-on-click-modal="false">
     <template #header>
       <div class="dialog-header">
-        <span class="dialog-header-icon">✏️</span>
+        <i class="fa-solid fa-pen dialog-header-icon"></i>
         <span>编辑「{{ editForm.word }}」</span>
       </div>
     </template>
@@ -476,7 +476,7 @@
   >
     <div class="batch-complete-content">
       <div class="batch-complete-ring" :class="{ gold: isAllKnownComplete }">
-        <span class="batch-complete-emoji">{{ isAllKnownComplete ? '🏆' : '🎉' }}</span>
+        <span class="batch-complete-emoji"><i :class="isAllKnownComplete ? 'fa-solid fa-trophy' : 'fa-solid fa-face-laugh-beam'"></i></span>
       </div>
       <h3 class="batch-complete-title">{{ isAllKnownComplete ? '全部完成！' : '本组完成！' }}</h3>
       <p class="batch-complete-text">{{ batchEncouragement }}</p>
@@ -506,10 +506,10 @@
     <template #footer>
       <div class="batch-complete-footer">
         <el-button v-if="!isLastBatch" type="primary" @click="goToNextBatch" style="width:100%">
-          进入第 {{ wordStore.batchIndex + 2 }} 组 →
+          进入第 {{ wordStore.batchIndex + 2 }} 组 <i class="fa-solid fa-arrow-right"></i>
         </el-button>
         <el-button v-else type="primary" @click="showBatchComplete = false" style="width:100%">
-          太棒了，关闭 ✓
+          太棒了，关闭 <i class="fa-solid fa-check"></i>
         </el-button>
       </div>
     </template>
@@ -519,7 +519,7 @@
   <el-dialog v-model="showUpload" width="480px" :close-on-click-modal="false">
     <template #header>
       <div class="dialog-header">
-        <span class="dialog-header-icon">✨</span>
+        <i class="fa-solid fa-wand-magic-sparkles dialog-header-icon"></i>
         <span>AI 添加单词</span>
       </div>
     </template>

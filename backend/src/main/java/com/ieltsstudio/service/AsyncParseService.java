@@ -55,23 +55,27 @@ public class AsyncParseService {
     );
 
     @Async("asyncParseExecutor")
-    public void parseAndSave(Long examId, byte[] fileBytes, String originalFilename,
+    public void parseAndSave(Long userId, Long examId, byte[] fileBytes, String originalFilename,
                              boolean parsePrecise, String extractedText, String examType) {
         try {
-            if (parsePrecise && qwenAiParseService.isConfigured()) {
-                // ── Precise path: Qwen vision → structured JSON directly ───────────────
+            if (parsePrecise) {
+                // ── Precise path: Vision provider → structured JSON directly ───────────
+                if (!qwenAiParseService.isConfigured(userId)) {
+                    throw new RuntimeException("精准解析未配置，请前往个人中心配置 Vision Provider，或切换站点内置配置");
+                }
                 log.info("Exam {} – using {} AI precise parse (vision → JSON) for type: {}", examId, qwenAiParseService.getProviderName(), examType);
                 Map<String, Object> parsed;
                 try {
-                    parsed = qwenAiParseService.parseDocument(fileBytes, originalFilename, examType);
+                    parsed = qwenAiParseService.parseDocument(userId, fileBytes, originalFilename, examType);
                 } catch (Exception qwenEx) {
+                    // 仅记异常类名，避免把 provider body（即使已被脱敏，保险起见）写入日志
                     log.warn("Exam {} – {} AI precise parse failed ({}), falling back to text extraction + DeepSeek",
-                            examId, qwenAiParseService.getProviderName(), qwenEx.getMessage());
+                            examId, qwenAiParseService.getProviderName(), qwenEx.getClass().getSimpleName());
                     String fallbackText = fileParseService.extractTextFromBytes(fileBytes, originalFilename);
-                    handleMultiSection(examId, fallbackText);
+                    handleMultiSection(userId, examId, fallbackText);
                     return;
                 }
-                handleQwenParsedResult(examId, parsed);
+                handleQwenParsedResult(userId, examId, parsed);
             } else {
                 // ── Standard path ─────────────────────────────────────────────
                 String text;
@@ -82,15 +86,15 @@ public class AsyncParseService {
                 } else {
                     text = fileParseService.extractTextFromBytes(fileBytes, originalFilename);
                 }
-                
-                // If text extraction failed and Qwen AI is available, auto-switch to precise parse
+
+                // If text extraction failed and Vision AI is available, auto-switch to precise parse
                 if (text == null || text.trim().length() < 80) {
-                    if (qwenAiParseService.isConfigured()) {
+                    if (qwenAiParseService.isConfigured(userId)) {
                         log.warn("Exam {} – extraction too short ({} chars), auto-retrying with {} AI precise parse for type: {}",
                                 examId, text == null ? 0 : text.trim().length(), qwenAiParseService.getProviderName(), examType);
                         try {
-                            Map<String, Object> qwenResult = qwenAiParseService.parseDocument(fileBytes, originalFilename, examType);
-                            handleQwenParsedResult(examId, qwenResult);
+                            Map<String, Object> qwenResult = qwenAiParseService.parseDocument(userId, fileBytes, originalFilename, examType);
+                            handleQwenParsedResult(userId, examId, qwenResult);
                             return;
                         } catch (Exception qwenEx) {
                             log.error("Exam {} – {} AI precise parse also failed", examId, qwenAiParseService.getProviderName(), qwenEx);
@@ -101,7 +105,7 @@ public class AsyncParseService {
                                 + " 字符），可能是扫描版PDF，请使用精准解析或上传Word格式");
                     }
                 }
-                
+
                 // Writing tasks → parseSingle (SYSTEM_PROMPT has writing rules);
                 // Reading/Listening → workflowParse (Step1 + Step2 for better accuracy)
                 // Only treat as writing if user explicitly chose 'writing' type,
@@ -113,7 +117,7 @@ public class AsyncParseService {
                         || (textTrimmed.length() < 2000 && (
                             textUpper.startsWith("WRITING TASK")
                             || textUpper.contains("\nWRITING TASK")
-                            || (textTrimmed.toLowerCase().contains("write at least") 
+                            || (textTrimmed.toLowerCase().contains("write at least")
                                 && !textTrimmed.toLowerCase().contains("questions")
                                 && !textTrimmed.toLowerCase().contains("true/false/not given")
                                 && !textTrimmed.toLowerCase().contains("no more than"))
@@ -121,11 +125,11 @@ public class AsyncParseService {
                 Map<String, Object> parsed;
                 if (isWriting) {
                     log.info("Exam {} – writing task detected, using parseSingle (skip workflow)", examId);
-                    parsed = parseSingle(examId, text);
+                    parsed = parseSingle(userId, examId, text);
                 } else {
-                    parsed = workflowParse(examId, text);
+                    parsed = workflowParse(userId, examId, text);
                 }
-                commitSection(examId, null, parsed, null, text, examType);
+                commitSection(userId, examId, null, parsed, null, text, examType);
             }
         } catch (Exception e) {
             log.error("Failed to parse exam {}", examId, e);
@@ -366,15 +370,15 @@ public class AsyncParseService {
     }
 
     @Async("asyncParseExecutor")
-    public void parseAndSaveImages(Long examId, List<byte[]> imageBytes, List<String> filenames,
+    public void parseAndSaveImages(Long userId, Long examId, List<byte[]> imageBytes, List<String> filenames,
                                    boolean parsePrecise, String extractedText, String examType) {
         try {
             if (parsePrecise) {
-                if (!qwenAiParseService.isConfigured()) {
-                    throw new RuntimeException("精准解析未配置（Qwen API Key 缺失），无法解析图片");
+                if (!qwenAiParseService.isConfigured(userId)) {
+                    throw new RuntimeException("精准解析未配置，请前往个人中心配置 Vision Provider，或切换站点内置配置");
                 }
-                Map<String, Object> parsed = qwenAiParseService.parseImages(imageBytes, filenames, examType);
-                handleQwenParsedResult(examId, parsed);
+                Map<String, Object> parsed = qwenAiParseService.parseImages(userId, imageBytes, filenames, examType);
+                handleQwenParsedResult(userId, examId, parsed);
                 return;
             }
 
@@ -382,21 +386,12 @@ public class AsyncParseService {
             if (extractedText == null || extractedText.trim().length() < 80) {
                 throw new RuntimeException("图片普通解析需要前端 OCR 提取文字（extractedText 过短）");
             }
-            Map<String, Object> parsed = workflowParse(examId, extractedText);
-            commitSection(examId, null, parsed, null, extractedText);
+            Map<String, Object> parsed = workflowParse(userId, examId, extractedText);
+            commitSection(userId, examId, null, parsed, null, extractedText);
         } catch (Exception e) {
             log.error("Failed to parse exam {} (images)", examId, e);
             markError(examId);
         }
-    }
-
-    /**
-     * Legacy method for backward compatibility - defaults to reading type
-     */
-    @Async("asyncParseExecutor")
-    public void parseAndSave(Long examId, byte[] fileBytes, String originalFilename,
-                             boolean parsePrecise, String extractedText) {
-        parseAndSave(examId, fileBytes, originalFilename, parsePrecise, extractedText, "reading");
     }
 
     // ── Qwen AI direct parse result handling ────────────────────────────────────────────────
@@ -406,7 +401,7 @@ public class AsyncParseService {
      * The result may contain {"sections":[...]} or flat {"passages":[...],"questions":[...]}.
      */
     @SuppressWarnings("unchecked")
-    private void handleQwenParsedResult(Long examId, Map<String, Object> parsed) throws Exception {
+    private void handleQwenParsedResult(Long userId, Long examId, Map<String, Object> parsed) throws Exception {
         Exam original = examMapper.selectById(examId);
 
         if (parsed.containsKey("sections")) {
@@ -440,7 +435,7 @@ public class AsyncParseService {
 
             // Post-process: enrich options, fix missing heading questions, etc.
             String combinedPassageText = String.join("\n", allPassages);
-            aiParseService.postProcess(merged, combinedPassageText);
+            aiParseService.postProcess(userId, merged, combinedPassageText);
             // Extract structured charts/tables from passages (backward compatible)
             Map<String, Object> visual = VisualBlockConverter.extract(allPassages);
             merged.put("charts", visual.get("charts"));
@@ -452,7 +447,7 @@ public class AsyncParseService {
             String qwenExamType = anyWrite ? "writing" : (original.getType() != null ? original.getType() : "reading");
             if (anyWrite) original.setType("writing");
 
-            commitSection(examId, null, merged, original, null, qwenExamType);
+            commitSection(userId, examId, null, merged, original, null, qwenExamType);
             log.info("Exam {} – Qwen AI parsed {} section(s), {} unique questions",
                     examId, sections.size(), deduped.size());
         } else {
@@ -460,7 +455,7 @@ public class AsyncParseService {
             // Post-process: enrich options, fix missing heading questions, etc.
             List<String> singlePassages = (List<String>) parsed.get("passages");
             String singlePassageText = singlePassages != null ? String.join("\n", singlePassages) : "";
-            aiParseService.postProcess(parsed, singlePassageText);
+            aiParseService.postProcess(userId, parsed, singlePassageText);
             // Extract structured charts/tables from passages (backward compatible)
             if (singlePassages != null) {
                 Map<String, Object> visual = VisualBlockConverter.extract(singlePassages);
@@ -474,7 +469,7 @@ public class AsyncParseService {
             boolean anyWrite = questions != null && questions.stream().anyMatch(q -> "write".equals(q.get("type")));
             String qwenExamType = anyWrite ? "writing" : (original.getType() != null ? original.getType() : "reading");
             if (anyWrite) original.setType("writing");
-            commitSection(examId, null, parsed, original, null, qwenExamType);
+            commitSection(userId, examId, null, parsed, original, null, qwenExamType);
             log.info("Exam {} – Qwen AI parsed single section, {} questions",
                     examId, questions != null ? questions.size() : 0);
         }
@@ -508,7 +503,7 @@ public class AsyncParseService {
     }
 
     @SuppressWarnings("unchecked")
-    private void handleMultiSection(Long examId, String text) throws Exception {
+    private void handleMultiSection(Long userId, Long examId, String text) throws Exception {
         Exam original = examMapper.selectById(examId);
 
         // Split into section chunks and parse each independently
@@ -522,7 +517,7 @@ public class AsyncParseService {
         for (int i = 0; i < chunks.size(); i++) {
             String chunk = chunks.get(i);
             try {
-                Map<String, Object> parsed = aiParseService.parseWithAi(chunk);
+                Map<String, Object> parsed = aiParseService.parseWithAi(userId, chunk);
                 List<String> passages = (List<String>) parsed.get("passages");
                 List<Map<String, Object>> questions = (List<Map<String, Object>>) parsed.get("questions");
                 if (passages != null) allPassages.addAll(passages);
@@ -538,8 +533,8 @@ public class AsyncParseService {
         if (parsedChunks == 0) {
             // All chunks failed – fall back to workflow parse
             log.warn("Exam {} – all chunks failed, falling back to workflow parse", examId);
-            Map<String, Object> parsed = workflowParse(examId, text);
-            commitSection(examId, null, parsed, original, text);
+            Map<String, Object> parsed = workflowParse(userId, examId, text);
+            commitSection(userId, examId, null, parsed, original, text);
             return;
         }
 
@@ -564,20 +559,20 @@ public class AsyncParseService {
         boolean anyWrite = allQuestions.stream().anyMatch(q -> "write".equals(q.get("type")));
         original.setType(anyWrite ? "writing" : original.getType());
 
-        commitSection(examId, null, merged, original, text);
+        commitSection(userId, examId, null, merged, original, text);
         log.info("Exam {} merged {} chunk(s) – {} unique questions", examId, parsedChunks, deduped.size());
     }
 
     // ── Single-section AI parse ───────────────────────────────────────────────
 
-    private Map<String, Object> parseSingle(Long examId, String text) throws Exception {
+    private Map<String, Object> parseSingle(Long userId, Long examId, String text) throws Exception {
         if (text == null || text.trim().length() < 80) {
             throw new RuntimeException("提取文字过少（" + (text == null ? 0 : text.trim().length())
                     + " 字符），可能是扫描版PDF，请使用精准解析或上传Word格式");
         }
         if (aiParseService.isConfigured()) {
             try {
-                Map<String, Object> p = aiParseService.parseWithAi(text);
+                Map<String, Object> p = aiParseService.parseWithAi(userId, text);
                 log.info("Exam {} – AI parse succeeded", examId);
                 return p;
             } catch (Exception aiEx) {
@@ -600,7 +595,7 @@ public class AsyncParseService {
      * and further falls back to parseSingle if everything fails.
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> workflowParse(Long examId, String text) throws Exception {
+    private Map<String, Object> workflowParse(Long userId, Long examId, String text) throws Exception {
         if (text == null || text.trim().length() < 80) {
             throw new RuntimeException("提取文字过少（" + (text == null ? 0 : text.trim().length())
                     + " 字符），可能是扫描版PDF，请使用精准解析或上传Word格式");
@@ -618,7 +613,7 @@ public class AsyncParseService {
             // ── Step 1A: Extract passages (focused prompt) ──
             try {
                 log.info("Exam {} – Workflow Step1A: extracting passages...", examId);
-                Map<String, Object> step1A = aiParseService.workflowStep1A(text);
+                Map<String, Object> step1A = aiParseService.workflowStep1A(userId, text);
                 passages = (List<String>) step1A.get("passages");
                 log.info("Exam {} – Workflow Step1A: extracted {} passages", examId,
                         passages == null ? 0 : passages.size());
@@ -630,7 +625,7 @@ public class AsyncParseService {
             // ── Step 1B: Identify question groups (focused prompt) ──
             try {
                 log.info("Exam {} – Workflow Step1B: identifying question groups...", examId);
-                Map<String, Object> step1B = aiParseService.workflowStep1B(text);
+                Map<String, Object> step1B = aiParseService.workflowStep1B(userId, text);
                 groups = (List<Map<String, Object>>) step1B.get("questionGroups");
                 log.info("Exam {} – Workflow Step1B: identified {} question groups", examId,
                         groups == null ? 0 : groups.size());
@@ -644,7 +639,7 @@ public class AsyncParseService {
                 log.info("Exam {} – Split steps incomplete (passages={}, groups={}), trying combined Step1",
                         examId, passages == null ? "null" : passages.size(),
                         groups == null ? "null" : groups.size());
-                Map<String, Object> step1Combined = aiParseService.workflowStep1(text);
+                Map<String, Object> step1Combined = aiParseService.workflowStep1(userId, text);
                 if (passages == null) {
                     passages = (List<String>) step1Combined.get("passages");
                 }
@@ -655,7 +650,7 @@ public class AsyncParseService {
 
             if (groups == null || groups.isEmpty()) {
                 log.warn("Exam {} – Workflow returned 0 groups, falling back to parseSingle", examId);
-                return parseSingle(examId, text);
+                return parseSingle(userId, examId, text);
             }
 
             log.info("Exam {} – Workflow structure: {} passages, {} question groups", examId,
@@ -670,7 +665,7 @@ public class AsyncParseService {
                 Map<String, Object> group = groups.get(i);
                 String range = String.valueOf(group.getOrDefault("range", "group" + (i + 1)));
                 try {
-                    Map<String, Object> step2Result = aiParseService.workflowStep2(passageText, group);
+                    Map<String, Object> step2Result = aiParseService.workflowStep2(userId, passageText, group);
                     List<Map<String, Object>> groupQuestions = (List<Map<String, Object>>) step2Result.get("questions");
                     if (groupQuestions != null && !groupQuestions.isEmpty()) {
                         // Ensure options from Step1B are carried over if Step2 didn't include them
@@ -701,7 +696,7 @@ public class AsyncParseService {
             result.put("questions", allQuestions);
 
             // Post-process: enrich options, fix locatorText, etc.
-            aiParseService.postProcess(result, text);
+            aiParseService.postProcess(userId, result, text);
             // Extract structured charts/tables from passages (backward compatible)
             List<String> pv = (List<String>) result.get("passages");
             if (pv != null) {
@@ -718,7 +713,7 @@ public class AsyncParseService {
 
         } catch (Exception workflowEx) {
             log.warn("Exam {} – Workflow failed ({}), falling back to parseSingle", examId, workflowEx.getMessage());
-            return parseSingle(examId, text);
+            return parseSingle(userId, examId, text);
         }
     }
 
@@ -759,14 +754,14 @@ public class AsyncParseService {
     /**
      * Backward-compatible overload without rawText.
      */
-    private void commitSection(Long examId, Map<String, Object> section,
+    private void commitSection(Long userId, Long examId, Map<String, Object> section,
                                Map<String, Object> parsed, Exam examHint) throws Exception {
-        commitSection(examId, section, parsed, examHint, null);
+        commitSection(userId, examId, section, parsed, examHint, null);
     }
 
-    private void commitSection(Long examId, Map<String, Object> section,
+    private void commitSection(Long userId, Long examId, Map<String, Object> section,
                                Map<String, Object> parsed, Exam examHint, String rawText) throws Exception {
-        commitSection(examId, section, parsed, examHint, rawText, null);
+        commitSection(userId, examId, section, parsed, examHint, rawText, null);
     }
 
     /**
@@ -778,7 +773,7 @@ public class AsyncParseService {
      * @param examType exam type hint ("writing"/"reading"/"listening") for fallback detection
      */
     @SuppressWarnings("unchecked")
-    private void commitSection(Long examId, Map<String, Object> section,
+    private void commitSection(Long userId, Long examId, Map<String, Object> section,
                                Map<String, Object> parsed, Exam examHint, String rawText, String examType) throws Exception {
         Map<String, Object> data = section != null ? section : parsed;
         if (!(data instanceof LinkedHashMap)) {
@@ -820,7 +815,7 @@ public class AsyncParseService {
                 log.warn("Exam {} – AI returned 0 questions but passages contain question markers, retrying parse", examId);
                 try {
                     Map<String, Object> retryResult = aiParseService.isConfigured()
-                            ? aiParseService.parseWithAi(combined)
+                            ? aiParseService.parseWithAi(userId, combined)
                             : fileParseService.parseExamContent(combined);
                     List<Map<String, Object>> retryQ = (List<Map<String, Object>>) retryResult.get("questions");
                     if (retryQ != null && !retryQ.isEmpty()) {
@@ -1051,7 +1046,7 @@ public class AsyncParseService {
                             && aiParseService != null && aiParseService.isConfigured()) {
                         try {
                             String fullWritingText = (rawText != null && !rawText.isBlank()) ? rawText : text;
-                            Map<String, Object> retry = aiParseService.generateWritingGuidance(fullWritingText);
+                            Map<String, Object> retry = aiParseService.generateWritingGuidance(userId, fullWritingText);
                             if (retry != null) {
                                 Object rAns = retry.get("answer");
                                 Object rExp = retry.get("explanation");

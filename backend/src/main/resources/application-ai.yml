@@ -6,16 +6,18 @@
 # ─── AI 解析：DeepSeek ────────────────────────────────────────────────────────
 # 用途：题目结构化解析、写作 AI 评分
 # 申请地址：https://platform.deepseek.com
+# 生产环境通过 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL 环境变量注入；
+# 本地开发可在 application-local.yml 中覆盖。
 ai:
   deepseek:
-    api-key:   #your_deepseek_api_key_here   # ⚠️ 填入你的 DeepSeek API Key
-    base-url: https://api.deepseek.com
-    model: deepseek-chat
+    api-key: ${DEEPSEEK_API_KEY:}   # ⚠️ BUILTIN 模式必填；USER 模式不需要
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
     max-tokens: 16384
     text-max-chars: 30000   # 输入文本截断阈值，避免超出 Token 限制
 
   precise:
-    provider: mimo
+    provider: ${AI_PRECISE_PROVIDER:mimo}
 
 # ─── AI 精准解析提供方选择 ─────────────────────────────────────────────────
 # 可选：mimo（默认，小米 MiMO，OpenAI 兼容）/ qwen（通义千问）
@@ -29,9 +31,9 @@ ai:
 #      对“图表/表格/数据可视化”类页面（如雅思写作 Task1 图表题）结构化提取更有优势
 # 使用方式：将 ai.precise.provider 设为 mimo 才会生效
 mimo:
-  api-key:    # 或用环境变量注入
-  base-url: https://api.xiaomimimo.com/v1
-  model: mimo-v2.5
+  api-key: ${MIMO_API_KEY:}
+  base-url: ${MIMO_BASE_URL:https://api.xiaomimimo.com/v1}
+  model: ${MIMO_MODEL:mimo-v2.5}
   ai-max-tokens: 8192
 
 # ─── AI 解析：通义千问 Qwen（精准解析）─────────────────────────────────────────
@@ -41,10 +43,18 @@ mimo:
 #   - qwen3.6-plus           推荐，支持图片输入，有免费额度
 #   - 千问VL系列模型          支持图片输入，但没有免费额度
 qwen:
-  api-key:  #your_dashscope_api_key_here   # ⚠️ 填入你的 DashScope API Key
-  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen3.6-plus
+  api-key: ${QWEN_API_KEY:}
+  base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+  model: ${QWEN_MODEL:qwen3.6-plus}
   ai-max-tokens: 8192
   max-pages: 20         # 单次精准解析最大页数
   render-dpi: 160       # PDF 渲染分辨率（DPI），越高越清晰但耗时更长
   image-quality: 0.82   # 图片压缩质量（0~1），影响 API 传输体积
+
+# ─── 用户自填 API Key 加密密钥 ────────────────────────────────────────────────
+# 用于加密 user_ai_settings 表中的 *_api_key_encrypted 字段（AES/GCM/NoPadding）。
+# 生产环境必须通过环境变量 AI_KEY_ENCRYPTION_SECRET 注入高强度随机字符串。
+# 缺失时后端会回退到开发态密钥并打印 WARN 日志，禁止用于生产。
+app:
+  ai:
+    key-encryption-secret: ${AI_KEY_ENCRYPTION_SECRET:}

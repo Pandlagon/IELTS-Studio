@@ -1,55 +1,58 @@
 package com.ieltsstudio.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ieltsstudio.ai.AiFeature;
+import com.ieltsstudio.ai.AiTaskType;
+import com.ieltsstudio.ai.client.OpenAiCompatibleClient;
+import com.ieltsstudio.ai.model.AiChatMessage;
+import com.ieltsstudio.ai.model.AiChatRequest;
+import com.ieltsstudio.ai.model.AiChatResponse;
+import com.ieltsstudio.ai.model.AiCredentials;
+import com.ieltsstudio.ai.service.AiSettingsService;
+import com.ieltsstudio.ai.service.AiUsageGuard;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * AI 完形填空生成 & 批改服务
  *
- * <p>调用 DeepSeek API：
+ * <p>Phase 5B：已接入新 AI Provider 架构，统一走
+ * {@link AiSettingsService#resolve} → {@link AiUsageGuard#checkBeforeCall} →
+ * {@link OpenAiCompatibleClient#chat} → {@link AiUsageGuard#markSuccess}/{@link AiUsageGuard#markFailure}。
+ *
  * <ul>
  *   <li>generate — 根据用户选择的单词 + 难度，生成一篇完形填空短文</li>
  *   <li>check — 用户提交答案后，AI 批改并给出解析</li>
  * </ul>
  *
- * <p>数据全部一次性，不落库。
+ * <p>数据全部一次性，不落库。</p>
  */
 @Slf4j
 @Service
 public class ClozeService {
 
-    private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
-
-    @Value("${ai.deepseek.api-key:}")
-    private String apiKey;
-
-    @Value("${ai.deepseek.base-url:https://api.deepseek.com}")
-    private String baseUrl;
-
-    @Value("${ai.deepseek.model:deepseek-chat}")
-    private String model;
+    private static final Set<String> ALLOWED_DIFFICULTIES = Set.of("easy", "medium", "hard");
+    private static final int MAX_WORDS = 10;
+    private static final int MAX_BLANKS = 20;
+    private static final int MAX_PASSAGE_LENGTH = 6000;
 
     private final ObjectMapper objectMapper;
+    private final AiSettingsService aiSettingsService;
+    private final AiUsageGuard aiUsageGuard;
+    private final OpenAiCompatibleClient openAiCompatibleClient;
 
-    public ClozeService(ObjectMapper objectMapper) {
+    public ClozeService(ObjectMapper objectMapper,
+                        AiSettingsService aiSettingsService,
+                        AiUsageGuard aiUsageGuard,
+                        OpenAiCompatibleClient openAiCompatibleClient) {
         this.objectMapper = objectMapper;
-    }
-
-    public boolean isConfigured() {
-        return apiKey != null && !apiKey.isBlank();
+        this.aiSettingsService = aiSettingsService;
+        this.aiUsageGuard = aiUsageGuard;
+        this.openAiCompatibleClient = openAiCompatibleClient;
     }
 
     // ── Generate ─────────────────────────────────────────────────────────
@@ -89,16 +92,27 @@ public class ClozeService {
     /**
      * 调用 AI 生成完形填空。
      *
+     * @param userId     当前登录用户 ID（由 Controller 从 AuthUser 注入，禁止前端传入）
      * @param words      用户选择的单词列表（1-10 个）
-     * @param meanings   对应的中文释义列表
-     * @param difficulty easy / medium / hard
+     * @param meanings   对应的中文释义列表（可为空或长度不足）
+     * @param difficulty easy / medium / hard；非法值 fallback 为 medium
      * @return 包含 title, passage, blanks 的 Map
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> generate(List<String> words, List<String> meanings, String difficulty) throws Exception {
-        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key 未配置");
-        if (words == null || words.isEmpty()) throw new IllegalArgumentException("单词列表不能为空");
-        if (words.size() > 10) throw new IllegalArgumentException("最多选择 10 个单词");
+    public Map<String, Object> generate(Long userId, List<String> words, List<String> meanings, String difficulty) throws Exception {
+        if (words == null || words.isEmpty()) {
+            throw new IllegalArgumentException("单词列表不能为空");
+        }
+        if (words.size() > MAX_WORDS) {
+            throw new IllegalArgumentException("最多选择 " + MAX_WORDS + " 个单词");
+        }
+        for (String w : words) {
+            if (w == null || w.trim().isEmpty()) {
+                throw new IllegalArgumentException("单词列表中包含空值");
+            }
+        }
+        String diff = (difficulty == null || difficulty.isBlank()) ? "medium"
+                : (ALLOWED_DIFFICULTIES.contains(difficulty) ? difficulty : "medium");
 
         StringBuilder wordListSb = new StringBuilder();
         for (int i = 0; i < words.size(); i++) {
@@ -111,19 +125,31 @@ public class ClozeService {
 
         String userMsg = String.format(
                 "单词列表：\n%s\n难度：%s\n\n请根据以上单词生成完形填空练习，返回 JSON。",
-                wordListSb, difficulty != null ? difficulty : "medium");
+                wordListSb, diff);
 
-        Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", 4096);
-        requestBody.put("response_format", Map.of("type", "json_object"));
-        requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", GENERATE_PROMPT),
-                Map.of("role", "user", "content", userMsg)
-        ));
-
-        String content = callDeepSeek(requestBody);
-        return objectMapper.readValue(content, Map.class);
+        AiCredentials credentials = aiSettingsService.resolve(userId, AiTaskType.TEXT);
+        String provider = providerName(credentials);
+        aiUsageGuard.checkBeforeCall(userId, AiFeature.CLOZE_GENERATE, credentials.getKeyMode(), provider);
+        try {
+            AiChatResponse response = openAiCompatibleClient.chat(AiChatRequest.builder()
+                    .credentials(credentials)
+                    .messages(List.of(
+                            AiChatMessage.system(GENERATE_PROMPT),
+                            AiChatMessage.user(userMsg)))
+                    .maxTokens(4096)
+                    .temperature(0.4)
+                    .jsonMode(true)
+                    .timeoutSeconds(90)
+                    .build());
+            // 只有 provider 调用成功 + JSON 解析成功才记 markSuccess，
+            // 否则解析异常会进入 catch 走 markFailure，避免一次调用同时记成功与失败。
+            Map<String, Object> parsed = objectMapper.readValue(response.getContent(), Map.class);
+            aiUsageGuard.markSuccess(userId, AiFeature.CLOZE_GENERATE, credentials.getKeyMode(), provider);
+            return parsed;
+        } catch (Exception ex) {
+            aiUsageGuard.markFailure(userId, AiFeature.CLOZE_GENERATE, credentials.getKeyMode(), provider, ex);
+            throw aiCallFailed(ex);
+        }
     }
 
     // ── Check ────────────────────────────────────────────────────────────
@@ -160,75 +186,89 @@ public class ClozeService {
     /**
      * 批改完形填空。
      *
-     * @param passage   短文全文
-     * @param blanks    题目列表（含 number, answer, options, correctOption）
-     * @param userAnswers 用户答案 Map: {1: "A", 2: "C", ...}
+     * @param userId      当前登录用户 ID
+     * @param passage     短文全文（最长 6000 字符）
+     * @param blanks      题目列表（含 number, answer, options, correctOption），最多 20 题
+     * @param userAnswers 用户答案 Map: {"1": "A", "2": "C", ...}
      * @return 包含 results, score, total, summary 的 Map
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> check(String passage, List<Map<String, Object>> blanks,
+    public Map<String, Object> check(Long userId, String passage, List<Map<String, Object>> blanks,
                                      Map<String, String> userAnswers) throws Exception {
-        if (!isConfigured()) throw new IllegalStateException("DeepSeek API key 未配置");
+        if (passage == null || passage.isBlank()) {
+            throw new IllegalArgumentException("短文不能为空");
+        }
+        if (passage.length() > MAX_PASSAGE_LENGTH) {
+            throw new IllegalArgumentException("短文过长（最多 " + MAX_PASSAGE_LENGTH + " 字符）");
+        }
+        if (blanks == null || blanks.isEmpty()) {
+            throw new IllegalArgumentException("题目列表不能为空");
+        }
+        if (blanks.size() > MAX_BLANKS) {
+            throw new IllegalArgumentException("题目数量过多（最多 " + MAX_BLANKS + " 题）");
+        }
+        if (userAnswers == null || userAnswers.isEmpty()) {
+            throw new IllegalArgumentException("用户答案不能为空");
+        }
+        for (Map<String, Object> blank : blanks) {
+            if (blank.get("number") == null) {
+                throw new IllegalArgumentException("题目缺少 number 字段");
+            }
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("短文：\n").append(passage).append("\n\n题目与用户作答：\n");
         for (Map<String, Object> blank : blanks) {
             int num = ((Number) blank.get("number")).intValue();
-            String correctAnswer = (String) blank.get("answer");
-            String correctOption = (String) blank.get("correctOption");
-            @SuppressWarnings("unchecked")
-            Map<String, String> options = (Map<String, String>) blank.get("options");
+            String correctAnswer = String.valueOf(blank.getOrDefault("answer", ""));
+            String correctOption = String.valueOf(blank.getOrDefault("correctOption", ""));
+            Map<String, String> options = blank.get("options") instanceof Map
+                    ? (Map<String, String>) blank.get("options")
+                    : Map.of();
             String userOpt = userAnswers.getOrDefault(String.valueOf(num), "");
-            String userWord = options != null && options.containsKey(userOpt) ? options.get(userOpt) : userOpt;
+            String userWord = (options != null && options.containsKey(userOpt)) ? options.get(userOpt) : userOpt;
 
             sb.append(String.format("第 %d 题：正确答案 = %s（%s），用户选择 = %s（%s）\n",
                     num, correctOption, correctAnswer, userOpt, userWord));
         }
 
-        Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("max_tokens", 4096);
-        requestBody.put("response_format", Map.of("type", "json_object"));
-        requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", CHECK_PROMPT),
-                Map.of("role", "user", "content", sb.toString())
-        ));
-
-        String content = callDeepSeek(requestBody);
-        return objectMapper.readValue(content, Map.class);
+        AiCredentials credentials = aiSettingsService.resolve(userId, AiTaskType.TEXT);
+        String provider = providerName(credentials);
+        aiUsageGuard.checkBeforeCall(userId, AiFeature.CLOZE_CHECK, credentials.getKeyMode(), provider);
+        try {
+            AiChatResponse response = openAiCompatibleClient.chat(AiChatRequest.builder()
+                    .credentials(credentials)
+                    .messages(List.of(
+                            AiChatMessage.system(CHECK_PROMPT),
+                            AiChatMessage.user(sb.toString())))
+                    .maxTokens(4096)
+                    .temperature(0.2)
+                    .jsonMode(true)
+                    .timeoutSeconds(90)
+                    .build());
+            Map<String, Object> parsed = objectMapper.readValue(response.getContent(), Map.class);
+            aiUsageGuard.markSuccess(userId, AiFeature.CLOZE_CHECK, credentials.getKeyMode(), provider);
+            return parsed;
+        } catch (Exception ex) {
+            aiUsageGuard.markFailure(userId, AiFeature.CLOZE_CHECK, credentials.getKeyMode(), provider, ex);
+            throw aiCallFailed(ex);
+        }
     }
 
-    // ── Shared AI call ───────────────────────────────────────────────────
+    // ── Shared error helper ──────────────────────────────────────────────
 
-    private String callDeepSeek(Map<String, Object> requestBody) throws Exception {
-        String requestJson = objectMapper.writeValueAsString(requestBody);
-        log.debug("ClozeService calling DeepSeek, request length={}", requestJson.length());
+    /**
+     * 把 provider 调用相关异常脱敏后转为业务异常，
+     * 避免把原始 response body / API Key 透传给前端。
+     * 不 log ex.getMessage()，因为里面可能含 provider body。
+     */
+    private RuntimeException aiCallFailed(Exception ex) {
+        log.warn("Cloze AI 调用失败: {}", ex.getClass().getSimpleName());
+        return new RuntimeException("AI 服务暂时不可用，请稍后重试");
+    }
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/chat/completions"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestJson, StandardCharsets.UTF_8))
-                .timeout(Duration.ofSeconds(90))
-                .build();
-
-        HttpResponse<String> response = SHARED_HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() >= 400) {
-            log.error("DeepSeek API error: HTTP {}, body={}", response.statusCode(), response.body());
-            throw new RuntimeException("AI 服务调用失败 (HTTP " + response.statusCode() + ")");
-        }
-
-        JsonNode root = objectMapper.readTree(response.body());
-        String content = root.path("choices").get(0)
-                .path("message").path("content").asText();
-        log.debug("ClozeService DeepSeek response length={}", content.length());
-
-        // Strip markdown code fences if present
-        if (content.startsWith("```")) {
-            content = content.replaceAll("^```(?:json)?\\s*", "").replaceAll("\\s*```$", "");
-        }
-
-        return content;
+    /** 仅返回 provider 枚举名或 null，避免在 usage record 中暴露 baseUrl / model / API Key */
+    private static String providerName(AiCredentials credentials) {
+        return credentials.getProvider() == null ? null : credentials.getProvider().name();
     }
 }

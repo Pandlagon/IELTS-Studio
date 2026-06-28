@@ -57,7 +57,7 @@ public class AsyncWordService {
                 return;
             }
 
-            List<Map<String, Object>> aiEntries = aiParseService.generateWordEntries(text);
+            List<Map<String, Object>> aiEntries = aiParseService.generateWordEntries(userId, text);
             if (aiEntries == null || aiEntries.isEmpty()) {
                 markFailed(book, "AI未识别出词汇");
                 writeProgress(bookId, total, saved, skipped, "failed", "AI未识别出词汇");
@@ -130,7 +130,7 @@ public class AsyncWordService {
         writeProgress(bookId, rawWords.size(), 0, 0, "processing", null);
         try {
             String input = String.join(" ", rawWords);
-            List<Map<String, Object>> aiEntries = aiParseService.generateWordEntries(input);
+            List<Map<String, Object>> aiEntries = aiParseService.generateWordEntries(userId, input);
             if (aiEntries == null || aiEntries.isEmpty()) {
                 log.warn("AI returned no entries for quick-add words: {}", rawWords);
                 writeProgress(bookId, rawWords.size(), 0, rawWords.size(), "failed", "AI未返回词条");

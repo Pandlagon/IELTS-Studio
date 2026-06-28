@@ -3,7 +3,7 @@
     <div class="nav-container">
       <!-- Logo -->
       <router-link to="/" class="nav-logo">
-        <span class="logo-icon">✦</span>
+        <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
         <span class="logo-text">IELTS Studio</span>
       </router-link>
 
@@ -34,10 +34,20 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           <span class="github-text">Star</span>
         </a>
-        <button class="theme-toggle" @click="themeStore.toggle()" :title="themeStore.isDark ? '切换亮色模式' : '切换深色模式'">
-          <svg v-if="!themeStore.isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        </button>
+        <el-dropdown @command="themeStore.setMode" trigger="click">
+          <button class="theme-toggle" :title="themeToggleTitle">
+            <i :class="currentThemeOption.icon"></i>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="option in themeOptions" :key="option.value" :command="option.value">
+                <i :class="['theme-menu-icon', option.icon]"></i>
+                <span>{{ option.label }}</span>
+                <i v-if="themeStore.themeMode === option.value" class="fa-solid fa-check theme-check"></i>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <template v-if="!authStore.isLoggedIn">
           <router-link to="/login" class="nav-btn-ghost">登录</router-link>
           <router-link to="/register" class="nav-btn-primary">注册</router-link>
@@ -53,6 +63,18 @@
               <el-dropdown-menu>
                 <el-dropdown-item command="profile">
                   <el-icon><User /></el-icon> 个人中心
+                </el-dropdown-item>
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_USERS_VIEW')" command="adminUsers">
+                  <el-icon><UserFilled /></el-icon> 用户管理
+                </el-dropdown-item>
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_QUOTA_VIEW')" command="adminQuotas">
+                  <el-icon><Coin /></el-icon> 额度管理
+                </el-dropdown-item>
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AI_USAGE_VIEW')" command="adminAiUsage">
+                  <el-icon><DataLine /></el-icon> AI 使用统计
+                </el-dropdown-item>
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AUDIT_LOG_VIEW')" command="adminAuditLogs">
+                  <el-icon><Document /></el-icon> 审计日志
                 </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon> 退出登录
@@ -75,10 +97,21 @@
         <router-link to="/words" class="mobile-link" @click="mobileOpen = false">背单词</router-link>
         <router-link to="/exams" class="mobile-link" @click="mobileOpen = false">模拟考试</router-link>
         <div class="mobile-divider"></div>
-        <a class="mobile-link" href="https://github.com/Pandlagon/IELTS-Studio" target="_blank" rel="noopener" @click="mobileOpen = false">⭐ GitHub Star</a>
-        <button class="mobile-link" @click="themeStore.toggle(); mobileOpen = false">
-          {{ themeStore.isDark ? '☀️ 亮色模式' : '🌙 深色模式' }}
-        </button>
+        <a class="mobile-link" href="https://github.com/Pandlagon/IELTS-Studio" target="_blank" rel="noopener" @click="mobileOpen = false"><i class="fa-solid fa-star"></i> GitHub Star</a>
+        <div class="mobile-theme-group">
+          <div class="mobile-theme-title">主题模式</div>
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            class="mobile-link mobile-theme-option"
+            :class="{ active: themeStore.themeMode === option.value }"
+            @click="selectMobileTheme(option.value)"
+          >
+            <i :class="option.icon"></i>
+            {{ option.label }}
+            <i v-if="themeStore.themeMode === option.value" class="fa-solid fa-check mobile-theme-check"></i>
+          </button>
+        </div>
         <div class="mobile-divider"></div>
         <template v-if="!authStore.isLoggedIn">
           <router-link to="/login" class="mobile-link" @click="mobileOpen = false">登录</router-link>
@@ -86,6 +119,18 @@
         </template>
         <template v-else>
           <router-link to="/profile" class="mobile-link" @click="mobileOpen = false">个人中心</router-link>
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_USERS_VIEW')" to="/admin/users" class="mobile-link" @click="mobileOpen = false">
+            <i class="fa-solid fa-users-gear"></i> 用户管理
+          </router-link>
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_QUOTA_VIEW')" to="/admin/quotas" class="mobile-link" @click="mobileOpen = false">
+            <i class="fa-solid fa-coins"></i> 额度管理
+          </router-link>
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AI_USAGE_VIEW')" to="/admin/ai-usage" class="mobile-link" @click="mobileOpen = false">
+            <i class="fa-solid fa-chart-line"></i> AI 使用统计
+          </router-link>
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AUDIT_LOG_VIEW')" to="/admin/audit-logs" class="mobile-link" @click="mobileOpen = false">
+            <i class="fa-solid fa-clipboard-list"></i> 审计日志
+          </router-link>
           <button class="mobile-link mobile-logout" @click="handleLogout">退出登录</button>
         </template>
       </div>
@@ -94,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -105,12 +150,28 @@ const router = useRouter()
 const isScrolled = ref(false)
 const mobileOpen = ref(false)
 
+const themeOptions = [
+  { value: 'system', label: '跟随系统', icon: 'fa-solid fa-desktop' },
+  { value: 'light', label: '亮色模式', icon: 'fa-solid fa-sun' },
+  { value: 'dark', label: '深色模式', icon: 'fa-solid fa-moon' },
+]
+
+const currentThemeOption = computed(() => {
+  return themeOptions.find(option => option.value === themeStore.themeMode) || themeOptions[0]
+})
+
+const themeToggleTitle = computed(() => `当前：${currentThemeOption.value.label}`)
+
 function handleScroll() {
   isScrolled.value = window.scrollY > 20
 }
 
 function handleCommand(cmd) {
   if (cmd === 'profile') router.push('/profile')
+  else if (cmd === 'adminUsers') router.push('/admin/users')
+  else if (cmd === 'adminQuotas') router.push('/admin/quotas')
+  else if (cmd === 'adminAiUsage') router.push('/admin/ai-usage')
+  else if (cmd === 'adminAuditLogs') router.push('/admin/audit-logs')
   else if (cmd === 'logout') handleLogout()
 }
 
@@ -120,7 +181,18 @@ function handleLogout() {
   router.push('/')
 }
 
-onMounted(() => window.addEventListener('scroll', handleScroll))
+function selectMobileTheme(mode) {
+  themeStore.setMode(mode)
+  mobileOpen.value = false
+}
+
+onMounted(() => {
+  window.addEventListener('scroll', handleScroll)
+  // Phase 8C：登录态下懒加载当前 ADMIN 权限，用于按权限显示后台菜单
+  if (authStore.isLoggedIn && authStore.isAdmin && !authStore.adminPermissionsLoaded) {
+    authStore.loadAdminPermissions()
+  }
+})
 onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 </script>
 
@@ -339,6 +411,31 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 
 .mobile-link:hover { background: rgba(27,67,50,0.06); color: var(--color-primary); }
 
+.mobile-theme-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mobile-theme-title {
+  padding: 4px 12px 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.mobile-theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mobile-theme-option.active {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+.mobile-theme-check {
+  margin-left: auto;
+  font-size: 12px;
+}
+
 .mobile-register {
   background: var(--color-primary);
   color: #fff !important;
@@ -394,6 +491,16 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
   color: var(--color-primary);
   background: rgba(82, 183, 136, 0.08);
   transform: rotate(15deg);
+}
+.theme-menu-icon {
+  width: 16px;
+  margin-right: 8px;
+  text-align: center;
+}
+.theme-check {
+  margin-left: 16px;
+  color: var(--color-primary);
+  font-size: 12px;
 }
 
 .slide-down-enter-active, .slide-down-leave-active {

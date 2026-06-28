@@ -1,7 +1,16 @@
 package com.ieltsstudio.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ieltsstudio.ai.AiFeature;
+import com.ieltsstudio.ai.AiProviderType;
+import com.ieltsstudio.ai.AiTaskType;
+import com.ieltsstudio.ai.client.OpenAiCompatibleClient;
+import com.ieltsstudio.ai.model.AiChatMessage;
+import com.ieltsstudio.ai.model.AiChatRequest;
+import com.ieltsstudio.ai.model.AiChatResponse;
+import com.ieltsstudio.ai.model.AiCredentials;
+import com.ieltsstudio.ai.service.AiSettingsService;
+import com.ieltsstudio.ai.service.AiUsageGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -20,12 +29,6 @@ import javax.imageio.stream.ImageOutputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -39,17 +42,9 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class QwenAiParseService {
 
+    /** BUILTIN 默认 provider 名（仅用于日志展示，真实 provider 由 AiSettingsService 按用户解析） */
     @Value("${ai.precise.provider:qwen}")
     private String provider;
-
-    @Value("${qwen.api-key:}")
-    private String apiKey;
-
-    @Value("${qwen.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}")
-    private String baseUrl;
-
-    @Value("${qwen.model:qwen-vl-plus}")
-    private String model;
 
     @Value("${qwen.max-pages:20}")
     private int maxPages;
@@ -63,30 +58,16 @@ public class QwenAiParseService {
     @Value("${qwen.ai-max-tokens:8192}")
     private int aiMaxTokens;
 
-    // Xiaomi MiMO (OpenAI-compatible) – load when provider=mimo
-    @Value("${mimo.api-key:}")
-    private String mimoApiKey;
-
-    @Value("${mimo.base-url:}")
-    private String mimoBaseUrl;
-
-    @Value("${mimo.model:}")
-    private String mimoModel;
-
     @Value("${mimo.ai-max-tokens:8192}")
     private int mimoMaxTokens;
 
     @Value("${ai.precise.http-timeout-seconds:240}")
     private int httpTimeoutSeconds;
 
-    @Value("${ai.precise.max-retries:2}")
-    private int maxRetries;
-
     private final ObjectMapper objectMapper;
-
-    private static final HttpClient SHARED_HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .build();
+    private final AiSettingsService aiSettingsService;
+    private final AiUsageGuard aiUsageGuard;
+    private final OpenAiCompatibleClient openAiCompatibleClient;
 
     // ── Base prompts ───────────────────────────────────────────────────────
     
@@ -397,52 +378,50 @@ public class QwenAiParseService {
     private static final String SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + READING_PROMPT;
     private static final String MULTI_PAGE_PROMPT = READING_MULTI_PAGE_PROMPT;
 
-    private String getActiveApiKey() {
-        if ("mimo".equalsIgnoreCase(provider)) return mimoApiKey;
-        return apiKey;
-    }
-
-    private String getActiveBaseUrl() {
-        if ("mimo".equalsIgnoreCase(provider)) return (mimoBaseUrl == null || mimoBaseUrl.isBlank()) ? baseUrl : mimoBaseUrl;
-        return baseUrl;
-    }
-
-    private String getActiveModel() {
-        if ("mimo".equalsIgnoreCase(provider)) return (mimoModel == null || mimoModel.isBlank()) ? model : mimoModel;
-        return model;
-    }
-
-    private int getActiveMaxTokens() {
-        if ("mimo".equalsIgnoreCase(provider)) return mimoMaxTokens;
-        return aiMaxTokens;
-    }
-
     public String getProviderName() {
         return "mimo".equalsIgnoreCase(provider) ? "MiMO" : "Qwen";
     }
 
+    /**
+     * @deprecated 新架构下请使用 {@link #isConfigured(Long)}，由 {@link AiSettingsService} 按用户解析 Vision 凭据。
+     *             保留该方法仅为兼容极少 legacy 测试，主链路不应再调用。
+     */
+    @Deprecated
     public boolean isConfigured() {
-        return getActiveApiKey() != null && !getActiveApiKey().isBlank();
+        return false;
+    }
+
+    /**
+     * 判断当前用户是否已配置 Vision Provider（BUILTIN 或 USER 模式任一）。
+     * 由 {@link AiSettingsService#resolve(Long, AiTaskType)} 决定：解析成功即视为已配置。
+     */
+    public boolean isConfigured(Long userId) {
+        try {
+            aiSettingsService.resolve(userId, AiTaskType.VISION);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ── Public entry point ──────────────────────────────────────────────────
 
     /**
-     * Parse a PDF or image file directly into structured exam JSON using Qwen vision.
+     * Parse a PDF or image file directly into structured exam JSON using Vision provider.
      * Returns a Map with either {"passages":...,"questions":...} or {"sections":[...]}.
-     * 
+     *
+     * @param userId   登录用户 ID，用于解析 Vision Provider 凭据
      * @param fileBytes The file content as bytes
      * @param filename The original filename
      * @param examType The exam type (reading/writing/listening), defaults to "reading"
      */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> parseDocument(byte[] fileBytes, String filename, String examType) throws Exception {
-        if (!isConfigured()) {
-            throw new IllegalStateException("AI 精准解析未配置，请在 application.yml 中设置对应提供方的 API Key");
-        }
-        log.info("Precise parse using provider={}, model={}, baseUrl={}", getProviderName(), getActiveModel(), getActiveBaseUrl());
+    public Map<String, Object> parseDocument(Long userId, byte[] fileBytes, String filename, String examType) throws Exception {
+        AiCredentials credentials = aiSettingsService.resolve(userId, AiTaskType.VISION);
+        log.info("Precise parse using provider={}, model={}, baseUrl={}",
+                credentials.getProvider(), credentials.getModel(), credentials.getBaseUrl());
         String lower = filename == null ? "" : filename.toLowerCase();
-        
+
         // Default to reading if examType is null or empty
         if (examType == null || examType.isBlank()) {
             examType = "reading";
@@ -459,26 +438,17 @@ public class QwenAiParseService {
         }
 
         if (dataUrls.size() == 1) {
-            return parseSingleImage(dataUrls.get(0), examType);
+            return parseSingleImage(userId, credentials, dataUrls.get(0), examType);
         } else {
-            return parseMultiPageImages(dataUrls, examType);
+            return parseMultiPageImages(userId, credentials, dataUrls, examType);
         }
     }
 
-    /**
-     * Legacy method for backward compatibility - defaults to reading type
-     */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> parseDocument(byte[] fileBytes, String filename) throws Exception {
-        return parseDocument(fileBytes, filename, "reading");
-    }
-
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> parseImages(List<byte[]> imageBytes, List<String> filenames, String examType) throws Exception {
-        if (!isConfigured()) {
-            throw new IllegalStateException("Qwen API key 未配置，请在 application.yml 中设置 qwen.api-key");
-        }
-        log.info("Precise parse(images) using provider={}, model={}, baseUrl={}", getProviderName(), getActiveModel(), getActiveBaseUrl());
+    public Map<String, Object> parseImages(Long userId, List<byte[]> imageBytes, List<String> filenames, String examType) throws Exception {
+        AiCredentials credentials = aiSettingsService.resolve(userId, AiTaskType.VISION);
+        log.info("Precise parse(images) using provider={}, model={}, baseUrl={}",
+                credentials.getProvider(), credentials.getModel(), credentials.getBaseUrl());
         if (imageBytes == null || imageBytes.isEmpty()) {
             throw new RuntimeException("未提供图片数据");
         }
@@ -497,9 +467,9 @@ public class QwenAiParseService {
             throw new RuntimeException("未提供图片数据");
         }
         if (dataUrls.size() == 1) {
-            return parseSingleImage(dataUrls.get(0), examType);
+            return parseSingleImage(userId, credentials, dataUrls.get(0), examType);
         }
-        return parseMultiPageImages(dataUrls, examType);
+        return parseMultiPageImages(userId, credentials, dataUrls, examType);
     }
 
     // ── Prompt selection ─────────────────────────────────────────────────────
@@ -524,21 +494,22 @@ public class QwenAiParseService {
     // ── Single image → structured JSON ──────────────────────────────────────
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseSingleImage(String dataUrl, String examType) throws Exception {
+    private Map<String, Object> parseSingleImage(Long userId, AiCredentials credentials,
+                                                  String dataUrl, String examType) throws Exception {
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text",
                 "请仔细阅读这张IELTS试卷页面图片中的所有文字、表格、图表，然后返回结构化JSON："));
         content.add(Map.of("type", "image_url", "image_url", Map.of("url", dataUrl)));
 
         String prompt = getPromptForExamType(examType, false);
-        String result = callQwen(prompt, content);
-        return normalizeParsedResult(readJsonMap(result));
+        return callVisionProvider(userId, credentials, prompt, content);
     }
 
     // ── Multi-page → structured JSON with sections ──────────────────────────
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> parseMultiPageImages(List<String> dataUrls, String examType) throws Exception {
+    private Map<String, Object> parseMultiPageImages(Long userId, AiCredentials credentials,
+                                                      List<String> dataUrls, String examType) throws Exception {
         List<Map<String, Object>> content = new ArrayList<>();
         content.add(Map.of("type", "text", "text",
                 "以下是同一份IELTS试卷的多页图片，请整体阅读所有页面中的文字、表格、图表，" +
@@ -548,10 +519,10 @@ public class QwenAiParseService {
         }
 
         String prompt = getPromptForExamType(examType, true);
-        String result = callQwen(prompt, content);
-        Map<String, Object> parsed = normalizeParsedResult(readJsonMap(result));
+        Map<String, Object> parsed = callVisionProvider(userId, credentials, prompt, content);
 
-        // Normalise: if AI returned flat passages/questions instead of sections wrapper, wrap it
+        // Normalise: if AI returned flat passages/questions instead of sections wrapper, wrap it.
+        // 该 wrapping 属于业务后处理，不在 markSuccess/markFailure 的 try-catch 边界内。
         if (!parsed.containsKey("sections") && parsed.containsKey("questions")) {
             Map<String, Object> section = new LinkedHashMap<>(parsed);
             section.putIfAbsent("name", "");
@@ -561,64 +532,77 @@ public class QwenAiParseService {
         return parsed;
     }
 
-    // ── Call Qwen API ───────────────────────────────────────────────────────
+    // ── Vision Provider 调用（新架构） ───────────────────────────────────────
 
-    private String callQwen(String systemPrompt, List<Map<String, Object>> userContent) throws Exception {
-        Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("model", getActiveModel());
-        requestBody.put("temperature", 0.1);
-        // Some OpenAI-compatible providers (e.g., MiMO) expect 'max_completion_tokens'
-        String tokenField = "mimo".equalsIgnoreCase(provider) ? "max_completion_tokens" : "max_tokens";
-        requestBody.put(tokenField, getActiveMaxTokens());
-        requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", userContent)
-        ));
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(getActiveBaseUrl() + "/chat/completions"))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + getActiveApiKey())
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        objectMapper.writeValueAsString(requestBody), StandardCharsets.UTF_8))
-                .timeout(Duration.ofSeconds(Math.max(60, httpTimeoutSeconds)))
-                .build();
-
-        HttpResponse<String> response = null;
-        int attempts = Math.max(1, 1 + Math.max(0, maxRetries));
-        for (int i = 1; i <= attempts; i++) {
-            try {
-                log.info("{} AI request attempt {}/{}", getProviderName(), i, attempts);
-                response = SHARED_HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-                int sc = response.statusCode();
-                if (sc >= 500 && i < attempts) {
-                    log.warn("{} AI HTTP {} on attempt {}/{} – retrying...", getProviderName(), sc, i, attempts);
-                    Thread.sleep(1500L * i);
-                    continue;
-                }
-                if (sc >= 400) {
-                    throw new RuntimeException(getProviderName() + " AI parse failed HTTP " + sc + ": " + response.body());
-                }
-                break; // success
-            } catch (java.net.http.HttpTimeoutException te) {
-                if (i < attempts) {
-                    log.warn("{} AI request timed out on attempt {}/{} – retrying...", getProviderName(), i, attempts);
-                    Thread.sleep(1500L * i);
-                    continue;
-                }
-                throw te;
-            }
+    /**
+     * 统一 Vision Provider 调用：{@link AiSettingsService} 已解析好 {@link AiCredentials}，
+     * 这里只负责 {@link AiUsageGuard} 用量守卫 + {@link OpenAiCompatibleClient} 发请求 +
+     * JSON 解析成功后 markSuccess / 失败 markFailure + 异常脱敏。
+     *
+     * <p>返回值是已经过 {@link #normalizeParsedResult} 的 Map，避免调用方重复处理。</p>
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> callVisionProvider(Long userId,
+                                                    AiCredentials credentials,
+                                                    String systemPrompt,
+                                                    List<Map<String, Object>> userContent) throws Exception {
+        int maxTokens = resolveVisionMaxTokens(credentials);
+        int timeoutSeconds = Math.max(60, httpTimeoutSeconds);
+        String provider = providerName(credentials);
+        aiUsageGuard.checkBeforeCall(userId, AiFeature.EXAM_PRECISE_PARSE, credentials.getKeyMode(), provider);
+        try {
+            AiChatResponse response = openAiCompatibleClient.chat(AiChatRequest.builder()
+                    .credentials(credentials)
+                    .messages(List.of(
+                            AiChatMessage.system(systemPrompt),
+                            AiChatMessage.userMultimodal(userContent)))
+                    .maxTokens(maxTokens)
+                    .temperature(0.1)
+                    .jsonMode(true)
+                    .timeoutSeconds(timeoutSeconds)
+                    .build());
+            String content = stripCodeFence(response.getContent());
+            Map<String, Object> parsed = readJsonMap(content);
+            Map<String, Object> normalized = normalizeParsedResult(parsed);
+            aiUsageGuard.markSuccess(userId, AiFeature.EXAM_PRECISE_PARSE, credentials.getKeyMode(), provider);
+            return normalized;
+        } catch (Exception ex) {
+            aiUsageGuard.markFailure(userId, AiFeature.EXAM_PRECISE_PARSE, credentials.getKeyMode(), provider, ex);
+            throw aiCallFailed(ex);
         }
+    }
 
-        JsonNode root = objectMapper.readTree(response.body());
-        String content = root.path("choices").path(0).path("message").path("content").asText();
-        log.info("{} AI parse response length={}", getProviderName(), content.length());
+    /**
+     * 根据 provider 决定 vision 任务的 maxTokens。
+     * USER 模式下自定义 provider（OPENAI_COMPATIBLE）默认使用 {@link #aiMaxTokens}。
+     */
+    private int resolveVisionMaxTokens(AiCredentials credentials) {
+        if (credentials.getProvider() == AiProviderType.MIMO) {
+            return mimoMaxTokens;
+        }
+        return aiMaxTokens;
+    }
 
-        // Strip markdown code fences if present
+    private String stripCodeFence(String content) {
+        if (content == null) return "";
         if (content.startsWith("```")) {
             content = content.replaceAll("^```[a-z]*\\n?", "").replaceAll("\\n?```$", "").trim();
         }
         return content;
+    }
+
+    /**
+     * Vision 调用失败时构造脱敏异常。不输出 ex.getMessage()（可能含 provider body），
+     * 不返回原始 body / Key / Authorization 给调用方。
+     */
+    private RuntimeException aiCallFailed(Exception ex) {
+        log.warn("Vision AI 调用失败: {}", ex.getClass().getSimpleName());
+        return new RuntimeException("AI 精准解析暂时不可用，请稍后重试");
+    }
+
+    /** 仅返回 provider 枚举名或 null，避免在 usage record 中暴露 baseUrl / model / API Key */
+    private static String providerName(AiCredentials credentials) {
+        return credentials.getProvider() == null ? null : credentials.getProvider().name();
     }
 
     @SuppressWarnings("unchecked")

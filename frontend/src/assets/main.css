@@ -63,6 +63,24 @@ html.dark {
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.28);
 
   color-scheme: dark;
+
+  --el-bg-color: var(--bg-white);
+  --el-bg-color-overlay: var(--bg-card);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-muted);
+  --el-border-color: var(--border-color);
+  --el-border-color-light: var(--border-light);
+  --el-border-color-lighter: var(--border-light);
+  --el-fill-color: #2a2928;
+  --el-fill-color-light: #302e2c;
+  --el-fill-color-lighter: #302e2c;
+  --el-fill-color-extra-light: #252423;
+  --el-fill-color-blank: var(--bg-white);
+  --el-disabled-bg-color: #232220;
+  --el-disabled-text-color: var(--text-muted);
+  --el-mask-color: rgba(0, 0, 0, 0.5);
 }
 
 /* ─── Reset ─────────────────────────────────────────────────────── */
@@ -888,6 +906,33 @@ html.dark .el-textarea__inner {
 html.dark .el-textarea__inner:focus {
   border-color: var(--color-primary) !important;
 }
+
+/* Dark mode: el-select 外框（与 el-input__wrapper 对称，补全主题适配） */
+html.dark .el-select__wrapper {
+  background-color: var(--bg-card) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+}
+html.dark .el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--color-accent) inset !important;
+}
+html.dark .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+  background-color: var(--bg-white) !important;
+}
+html.dark .el-select__placeholder,
+html.dark .el-select__selected-item {
+  color: var(--text-primary) !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+html.dark .el-select__placeholder.is-transparent {
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+}
+html.dark .el-select__caret,
+html.dark .el-select__suffix {
+  color: var(--text-muted) !important;
+}
+
 html.dark .el-form-item__label {
   color: var(--text-secondary) !important;
 }
@@ -912,6 +957,98 @@ html.dark .el-button--primary {
 html.dark .el-button--primary:hover {
   background-color: var(--color-primary-hover) !important;
   border-color: var(--color-primary-hover) !important;
+}
+
+/* Dark mode: Element Plus data display containers */
+html.dark .el-card {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+html.dark .el-card__header {
+  border-bottom-color: var(--border-light) !important;
+}
+html.dark .el-table {
+  --el-table-bg-color: var(--bg-card);
+  --el-table-tr-bg-color: var(--bg-card);
+  --el-table-header-bg-color: #232220;
+  --el-table-row-hover-bg-color: #2d2b29;
+  --el-table-current-row-bg-color: #1e2b23;
+  --el-table-border-color: var(--border-light);
+  --el-table-header-text-color: var(--text-secondary);
+  --el-table-text-color: var(--text-secondary);
+  background-color: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table th.el-table__cell {
+  background-color: #232220 !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table tr,
+html.dark .el-table td.el-table__cell {
+  background-color: var(--bg-card) !important;
+  border-bottom-color: var(--border-light) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table__body tr:hover > td.el-table__cell,
+html.dark .el-table__body tr.hover-row > td.el-table__cell {
+  background-color: #2d2b29 !important;
+}
+html.dark .el-table__inner-wrapper::before,
+html.dark .el-table__border-left-patch,
+html.dark .el-table__fixed-right::before,
+html.dark .el-table__fixed::before {
+  background-color: var(--border-light) !important;
+}
+html.dark .el-table .el-table__fixed-right-patch,
+html.dark .el-table .el-table-fixed-column--left,
+html.dark .el-table .el-table-fixed-column--right {
+  background-color: var(--bg-card) !important;
+}
+html.dark .el-empty__description {
+  color: var(--text-muted) !important;
+}
+
+/* Dark mode: pagination and compact admin controls */
+html.dark .el-pagination {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-bg-color: transparent;
+  --el-pagination-hover-color: var(--color-primary);
+  color: var(--text-secondary) !important;
+}
+html.dark .el-pagination .el-pagination__total,
+html.dark .el-pagination .el-pagination__jump,
+html.dark .el-pagination .el-pager li,
+html.dark .el-pagination button {
+  color: var(--text-secondary) !important;
+}
+html.dark .el-pagination .el-pager li,
+html.dark .el-pagination button {
+  background-color: transparent !important;
+}
+html.dark .el-pagination .el-pager li.is-active {
+  color: var(--color-primary) !important;
+  font-weight: 700;
+}
+html.dark .el-pagination button:disabled {
+  color: var(--text-muted) !important;
+  background-color: transparent !important;
+}
+html.dark .el-input-number__decrease,
+html.dark .el-input-number__increase {
+  background-color: #302e2c !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-date-editor,
+html.dark .el-date-editor .el-range-input {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+html.dark .el-date-editor .el-range-separator,
+html.dark .el-date-editor .el-range__icon,
+html.dark .el-date-editor .el-range__close-icon {
+  color: var(--text-muted) !important;
 }
 
 /* Autofill override: prevent browser blue tint on auto-filled inputs */
@@ -1058,19 +1195,74 @@ html.dark .clear-btn:hover { background: #2d1c1c !important; }
 html.dark .fab-minimize-btn:hover { background: var(--bg-card) !important; border-color: var(--border-color) !important; }
 
 /* ── Dark mode: ResultView ───────────────────────────────── */
+/* 注意：.hl-red / .hl-green / .question-keyword / .md-code / .md-code-block
+   都是通过 v-html 渲染的元素，不带 data-v-xxx scoped 属性。
+   :deep() 只在 Vue SFC <style scoped> 中有效，全局 CSS 中必须用普通类选择器。 */
 html.dark .hl-red-dot { background: #2d1c1c !important; border-color: #5c2828 !important; }
 html.dark .hl-green-dot { background: #1e2b23 !important; border-color: #3A5A48 !important; }
 html.dark .rvp-sub { background: #1e2b23 !important; color: #6BC99A !important; }
-html.dark :deep(.hl-red) { background: #2d1c1c !important; border-color: #5c2828 !important; }
-html.dark :deep(.hl-green) { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+
+/* v-html 高亮标记（普通类选择器即可匹配，无需 :deep） */
+html.dark .hl-red { background: #2d1c1c !important; border-bottom-color: #f59898 !important; }
+html.dark .hl-green { background: #1e2b23 !important; border-bottom-color: #6BC99A !important; }
+html.dark .review-q .question-keyword { color: #7ab8f5 !important; border-bottom-color: #7ab8f5 !important; }
+
+/* v-html AI 消息内的代码块（浅色用 rgba(0,0,0,0.06) 在深色下过黑） */
+html.dark .ai-msg-bubble .md-code { background: rgba(255,255,255,0.08) !important; color: #e6e6e6 !important; }
+html.dark .ai-msg-bubble .md-code-block { background: rgba(255,255,255,0.06) !important; color: #e6e6e6 !important; border: 1px solid var(--border-color) !important; }
+
+/* 题号徽章 */
 html.dark .review-num.correct { background: #1e2b23 !important; color: #6BC99A !important; }
 html.dark .review-num.wrong { background: #2d1c1c !important; color: #f59898 !important; }
 html.dark .review-num.write { background: #1a2535 !important; color: #7ab8f5 !important; }
+
+/* 用户答案 / 正确答案 */
 html.dark .user-answer.correct,
 html.dark .correct-answer { background: #1e2b23 !important; color: #6BC99A !important; }
 html.dark .user-answer.wrong { background: #2d1c1c !important; color: #f59898 !important; }
 html.dark .ai-fb-strengths { background: #1e2b23 !important; }
 html.dark .write-model-answer { background: #1e2b23 !important; }
+
+/* 图表数据可视化面板（绿色语义） */
+html.dark .result-visual-panel { background: #1e2b23 !important; border-color: #3A5A48 !important; }
+html.dark .rvp-title { color: #6BC99A !important; }
+html.dark .rvp-chart-title { color: #6BC99A !important; }
+html.dark .rvp-tab { background: var(--bg-card) !important; color: #6BC99A !important; border-color: #3A5A48 !important; }
+html.dark .rvp-tab.active { background: #2D6A4F !important; color: #fff !important; border-color: #2D6A4F !important; }
+html.dark .rvp-summary-item::before { color: #6BC99A !important; }
+html.dark .rvp-table-title { color: #6BC99A !important; }
+html.dark .rvp-table th { background: #243a2d !important; color: #EDE9E3 !important; }
+html.dark .result-passage-divider { border-top-color: #3A5A48 !important; }
+html.dark .result-passage-section-badge { background: #1e2b23 !important; color: #6BC99A !important; border-color: #3A5A48 !important; }
+
+/* 复盘项边框（按对错语义着色） */
+html.dark .review-item { background: var(--bg-card) !important; border-color: var(--border-color) !important; }
+html.dark .review-item.correct { border-color: #3A5A48 !important; }
+html.dark .review-item.wrong { border-color: #5c2828 !important; }
+html.dark .review-item.write { border-color: #1e3a5c !important; }
+html.dark .review-icon.write { color: #7ab8f5 !important; }
+
+/* AI 评分概览面板（蓝色语义） */
+html.dark .ai-overview-panel { background: #1a2535 !important; border-color: #1e3a5c !important; }
+html.dark .ai-overview-text { color: #cdddf5 !important; }
+html.dark .criterion-chip { background: var(--bg-card) !important; border-color: #1e3a5c !important; color: #7ab8f5 !important; }
+html.dark .ai-band-badge { background: #1e3a5c !important; color: #7ab8f5 !important; }
+html.dark .ai-grade-label { color: #7ab8f5 !important; }
+html.dark .ai-grade-pending { background: #2d2815 !important; color: #d4a017 !important; }
+html.dark .ai-fb-dim { color: #7ab8f5 !important; }
+html.dark .ai-fb-item { background: var(--bg-primary) !important; border-color: var(--border-light) !important; }
+html.dark .ai-fb-improve { background: #2d2815 !important; border-color: #4a3d15 !important; color: #d4a017 !important; }
+
+/* 写作 / 解析相关语义面板 */
+html.dark .write-user-answer { background: var(--bg-primary) !important; border-color: var(--border-light) !important; }
+html.dark .write-preview { color: var(--text-primary) !important; }
+html.dark .answer-label { color: var(--text-secondary) !important; }
+html.dark .wc-badge { background: var(--bg-card) !important; color: var(--text-secondary) !important; border-color: var(--border-color) !important; }
+html.dark .review-explanation { background: #2d2815 !important; border-color: #4a3d15 !important; color: #d4a017 !important; }
+
+/* 翻译按钮（蓝色语义） */
+html.dark .tb-btn { color: #7ab8f5 !important; background: rgba(122,184,245,0.12) !important; border-color: rgba(122,184,245,0.35) !important; }
+html.dark .tb-btn:hover:not(:disabled) { background: rgba(122,184,245,0.22) !important; }
 
 /* Exam section badges in ExamView / CollectionExamView */
 html.dark .section-badge-green { background: #1e2b23 !important; color: #6BC99A !important; border-color: #3A5A48 !important; }

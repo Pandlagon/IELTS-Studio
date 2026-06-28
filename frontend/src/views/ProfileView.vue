@@ -70,7 +70,7 @@
           <div class="history-section">
             <div class="section-hd">
               <h3>考试记录</h3>
-              <router-link to="/exams" class="see-all">查看全部 →</router-link>
+              <router-link to="/exams" class="see-all">查看全部 <i class="fa-solid fa-arrow-right"></i></router-link>
             </div>
             <div v-if="loadingHistory" class="history-loading">加载中...</div>
             <div v-else-if="examHistory.length" class="history-list">
@@ -109,7 +109,7 @@
             <div class="word-progress-card card">
               <div class="section-hd">
                 <h3>单词进度</h3>
-                <router-link to="/words" class="see-all">去背单词 →</router-link>
+                <router-link to="/words" class="see-all">去背单词 <i class="fa-solid fa-arrow-right"></i></router-link>
               </div>
               <div class="word-donut">
                 <svg viewBox="0 0 80 80" class="donut-svg">
@@ -159,11 +159,17 @@
                 </p>
               </div>
               <div v-else class="empty-section small">
-                <p>暂无错题，继续加油！🎉</p>
+                <p>暂无错题，继续加油！<i class="fa-solid fa-face-laugh-beam"></i></p>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- AI 设置卡片 -->
+        <AiSettingsCard />
+
+        <!-- AI 额度卡片 -->
+        <AiUsageCard />
 
       </div>
     </div>
@@ -172,7 +178,7 @@
     <el-dialog v-model="showEdit" width="420px" :close-on-click-modal="false">
       <template #header>
         <div class="dialog-header">
-          <span class="dialog-header-icon">👤</span>
+          <i class="fa-solid fa-user dialog-header-icon"></i>
           <span>编辑资料</span>
         </div>
       </template>
@@ -199,6 +205,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import NavBar from '@/components/NavBar.vue'
+import AiSettingsCard from '@/components/profile/AiSettingsCard.vue'
+import AiUsageCard from '@/components/profile/AiUsageCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useWordStore } from '@/stores/word'
 import { useExamStore } from '@/stores/exam'

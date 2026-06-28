@@ -21,11 +21,16 @@
               上传真题，智能批改，原文高亮定位错误依据。
             </p>
             <div class="hero-actions">
-              <router-link to="/register" class="btn-primary">免费注册开始</router-link>
-              <span class="login-hint">
-                已有账号？
-                <router-link to="/login" class="login-link">登录</router-link>
-              </span>
+              <template v-if="!authStore.isLoggedIn">
+                <router-link to="/register" class="btn-primary">免费注册开始</router-link>
+                <span class="login-hint">
+                  已有账号？
+                  <router-link to="/login" class="login-link">登录</router-link>
+                </span>
+              </template>
+              <template v-else>
+                <router-link to="/exams" class="btn-primary">开始模拟考试</router-link>
+              </template>
             </div>
             <div class="hero-stats">
               <div class="stat-item">
@@ -95,8 +100,10 @@
       <div class="container">
         <div class="cta-card">
           <h2 class="cta-title">准备好开始了吗？</h2>
-          <p class="cta-desc">免费注册，立即体验全部功能</p>
-          <router-link to="/register" class="btn-primary cta-btn">免费注册开始</router-link>
+          <p class="cta-desc">{{ authStore.isLoggedIn ? '立即进入模拟考试，挑战目标分数' : '免费注册，立即体验全部功能' }}</p>
+          <router-link :to="authStore.isLoggedIn ? '/exams' : '/register'" class="btn-primary cta-btn">
+            {{ authStore.isLoggedIn ? '开始模拟考试' : '免费注册开始' }}
+          </router-link>
         </div>
       </div>
     </section>
@@ -106,7 +113,7 @@
       <div class="container">
         <div class="footer-inner">
           <div class="footer-brand">
-            <span class="logo-icon">✦</span>
+            <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
             <span class="logo-text">IELTS Studio</span>
           </div>
           <p class="footer-copy">© 2024 IELTS Studio. 专注雅思备考。</p>
@@ -120,8 +127,10 @@
 import NavBar from '@/components/NavBar.vue'
 import WordCard from '@/components/WordCard.vue'
 import { useWordStore } from '@/stores/word'
+import { useAuthStore } from '@/stores/auth'
 
 const wordStore = useWordStore()
+const authStore = useAuthStore()
 
 const features = [
   {

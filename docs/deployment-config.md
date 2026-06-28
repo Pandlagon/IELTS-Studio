@@ -136,40 +136,47 @@ mysql -u root -p < backend/src/main/resources/db/init.sql
 
 ## 9. Local development example
 
-本地开发无需设置所有环境变量，`application.yml` 已内置开发默认值。可通过以下任一方式覆盖：
+本地开发无需设置所有环境变量，`application.yml` 已内置开发默认值。推荐使用 `.env` 文件集中管理本地敏感配置。
 
-### 方式 A：`application-local.yml`（推荐用于后端敏感配置）
+### 方式 A：根目录 `.env`（推荐）
 
-创建 `backend/src/main/resources/application-local.yml`（已在 `.gitignore`）：
+`application.yml` 已通过 `spring.config.import` 自动加载根目录 `.env`（`optional:file:../.env[.properties]`），复制模板后填入实际值即可，**无需指定 profile**：
 
-```yaml
-spring:
-  datasource:
-    password: your_local_db_password
-
-ai:
-  deepseek:
-    api-key: your_deepseek_key
-
-qwen:
-  api-key: your_dashscope_key
-
-mimo:
-  api-key: your_mimo_key
-
-app:
-  ai:
-    key-encryption-secret: your_local_encryption_secret
+```bash
+# 在仓库根目录执行
+cp .env.example .env
+# 编辑 .env，填入本地实际的 DB_PASSWORD / DEEPSEEK_API_KEY 等
 ```
 
-启动时激活 local profile：
+`.env` 示例（仅需填写本地有值的项，其余留空走默认）：
+
+```env
+DB_PASSWORD=your_local_db_password
+DEEPSEEK_API_KEY=your_deepseek_key
+QWEN_API_KEY=your_dashscope_key
+MIMO_API_KEY=your_mimo_key
+AI_KEY_ENCRYPTION_SECRET=your_local_encryption_secret
+```
+
+启动后端：
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+> `.env` 已在 `.gitignore` 中，不会被提交。`spring.config.import` 使用 `optional:` 前缀，文件不存在时不会报错。
+
+### 方式 B：`application-local.yml`（兼容旧方式）
+
+如已有 `backend/src/main/resources/application-local.yml`（已在 `.gitignore`），仍可通过 profile 激活：
 
 ```bash
 cd backend
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-### 方式 B：环境变量
+### 方式 C：环境变量
 
 ```bash
 # PowerShell

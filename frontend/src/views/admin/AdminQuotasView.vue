@@ -4,6 +4,7 @@
     <div class="page-header">
       <div class="header-text">
         <h2 class="page-title">
+          <el-button :icon="ArrowLeft" circle @click="router.back()" class="back-btn" />
           <i class="fa-solid fa-coins"></i>
           额度管理
         </h2>
@@ -157,10 +158,12 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, ArrowLeft } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminQuotasApi } from '@/api/adminQuotas'
 
+const router = useRouter()
 const loading = ref(false)
 const loadError = ref('')
 const forbidden = ref(false)
@@ -345,6 +348,12 @@ onMounted(loadQuotas)
   flex-wrap: wrap;
 }
 
+.page-title .back-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
 .page-title {
   margin: 0 0 4px;
   font-size: 22px;
@@ -356,7 +365,7 @@ onMounted(loadQuotas)
 
 .page-subtitle {
   margin: 0;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -399,13 +408,13 @@ onMounted(loadQuotas)
 
 .period-text {
   font-size: 12px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
 }
 
 .dialog-hint {
   margin: 12px 0 0;
   font-size: 12px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
 }
 
 :deep(.el-card__body) {

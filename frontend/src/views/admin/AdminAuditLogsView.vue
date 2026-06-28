@@ -4,6 +4,7 @@
     <div class="page-header">
       <div class="header-text">
         <h2 class="page-title">
+          <el-button :icon="ArrowLeft" circle @click="router.back()" class="back-btn" />
           <i class="fa-solid fa-clipboard-list"></i>
           审计日志
         </h2>
@@ -123,10 +124,12 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, ArrowLeft } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { adminAuditLogsApi } from '@/api/adminAuditLogs'
 import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const loadError = ref('')
@@ -245,6 +248,12 @@ onMounted(async () => {
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.page-title .back-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .page-title {

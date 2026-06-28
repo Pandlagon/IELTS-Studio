@@ -46,15 +46,18 @@
 
 ### 3.2 修改 AI 调用
 
-- 所有 AI 调用必须落在 `service/` 层（当前 `AiParseService` / `QwenAiParseService` / `QwenDocumentParseService` / `LlamaParseService`）。
-- 后续按 [ai-provider-architecture.md](./ai-provider-architecture.md) 抽象出 `OpenAiCompatibleClient`，新代码优先走新抽象。
-- **不要**在 Controller 里拼 Prompt 或直接 `RestTemplate`/`WebClient` 调 provider。
+- 所有 AI 调用必须落在 `service/` 层，并通过 `AiSettingsService` → `AiUsageGuard` → `OpenAiCompatibleClient` 统一抽象（已落地，详见 [ai-provider-architecture.md](./ai-provider-architecture.md)）。
+- **不要**在 Controller 里拼 Prompt 或直接 `RestTemplate`/`WebClient` 调 provider；也**不要**新增 direct `HttpClient` 调用绕过 `OpenAiCompatibleClient`。
+- 生产 service 不得复活旧的 `callDeepSeek` / `QwenDocumentParseService` / `SHARED_HTTP_CLIENT` 直连写法（CI 已加 grep 拦截）。
 
 ### 3.3 修改配置
 
 - 通用配置改 `backend/src/main/resources/application.yml`。
 - AI 相关配置改 `backend/src/main/resources/application-ai.yml`。
-- 本地敏感配置（密码、真实 Key）放 `application-local.yml`（已 `.gitignore`），用 `mvn spring-boot:run -Dspring-boot.run.profiles=local` 启动。
+- **生产敏感配置（DB 密码、API Key、JWT secret、AI 加密密钥等）一律通过环境变量注入**，不要硬编码进 yml。`application.yml` 已用 `${ENV_VAR:dev-default}` 占位，留空时走开发默认值。
+- 本地敏感配置推荐放在根目录 `.env`（复制 `.env.example` 而来，已 `.gitignore`），`application.yml` 通过 `spring.config.import: optional:file:../.env[.properties]` 自动加载，从 `backend/` 运行 `mvn spring-boot:run` 即可，无需 profile。
+- 兼容旧方式：也可继续使用 `backend/src/main/resources/application-local.yml`（已 `.gitignore`）+ `mvn spring-boot:run -Dspring-boot.run.profiles=local`，但 `.env` 是新推荐路径。
+- 详细变量清单与生产安全 checklist 见 [deployment-config.md](./deployment-config.md) 与 [manual-deployment-runbook.md](./manual-deployment-runbook.md)。
 
 ---
 

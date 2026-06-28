@@ -63,6 +63,24 @@ html.dark {
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.28);
 
   color-scheme: dark;
+
+  --el-bg-color: var(--bg-white);
+  --el-bg-color-overlay: var(--bg-card);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-muted);
+  --el-border-color: var(--border-color);
+  --el-border-color-light: var(--border-light);
+  --el-border-color-lighter: var(--border-light);
+  --el-fill-color: #2a2928;
+  --el-fill-color-light: #302e2c;
+  --el-fill-color-lighter: #302e2c;
+  --el-fill-color-extra-light: #252423;
+  --el-fill-color-blank: var(--bg-white);
+  --el-disabled-bg-color: #232220;
+  --el-disabled-text-color: var(--text-muted);
+  --el-mask-color: rgba(0, 0, 0, 0.5);
 }
 
 /* ─── Reset ─────────────────────────────────────────────────────── */
@@ -939,6 +957,98 @@ html.dark .el-button--primary {
 html.dark .el-button--primary:hover {
   background-color: var(--color-primary-hover) !important;
   border-color: var(--color-primary-hover) !important;
+}
+
+/* Dark mode: Element Plus data display containers */
+html.dark .el-card {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+html.dark .el-card__header {
+  border-bottom-color: var(--border-light) !important;
+}
+html.dark .el-table {
+  --el-table-bg-color: var(--bg-card);
+  --el-table-tr-bg-color: var(--bg-card);
+  --el-table-header-bg-color: #232220;
+  --el-table-row-hover-bg-color: #2d2b29;
+  --el-table-current-row-bg-color: #1e2b23;
+  --el-table-border-color: var(--border-light);
+  --el-table-header-text-color: var(--text-secondary);
+  --el-table-text-color: var(--text-secondary);
+  background-color: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table th.el-table__cell {
+  background-color: #232220 !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table tr,
+html.dark .el-table td.el-table__cell {
+  background-color: var(--bg-card) !important;
+  border-bottom-color: var(--border-light) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-table__body tr:hover > td.el-table__cell,
+html.dark .el-table__body tr.hover-row > td.el-table__cell {
+  background-color: #2d2b29 !important;
+}
+html.dark .el-table__inner-wrapper::before,
+html.dark .el-table__border-left-patch,
+html.dark .el-table__fixed-right::before,
+html.dark .el-table__fixed::before {
+  background-color: var(--border-light) !important;
+}
+html.dark .el-table .el-table__fixed-right-patch,
+html.dark .el-table .el-table-fixed-column--left,
+html.dark .el-table .el-table-fixed-column--right {
+  background-color: var(--bg-card) !important;
+}
+html.dark .el-empty__description {
+  color: var(--text-muted) !important;
+}
+
+/* Dark mode: pagination and compact admin controls */
+html.dark .el-pagination {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-bg-color: transparent;
+  --el-pagination-hover-color: var(--color-primary);
+  color: var(--text-secondary) !important;
+}
+html.dark .el-pagination .el-pagination__total,
+html.dark .el-pagination .el-pagination__jump,
+html.dark .el-pagination .el-pager li,
+html.dark .el-pagination button {
+  color: var(--text-secondary) !important;
+}
+html.dark .el-pagination .el-pager li,
+html.dark .el-pagination button {
+  background-color: transparent !important;
+}
+html.dark .el-pagination .el-pager li.is-active {
+  color: var(--color-primary) !important;
+  font-weight: 700;
+}
+html.dark .el-pagination button:disabled {
+  color: var(--text-muted) !important;
+  background-color: transparent !important;
+}
+html.dark .el-input-number__decrease,
+html.dark .el-input-number__increase {
+  background-color: #302e2c !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .el-date-editor,
+html.dark .el-date-editor .el-range-input {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+html.dark .el-date-editor .el-range-separator,
+html.dark .el-date-editor .el-range__icon,
+html.dark .el-date-editor .el-range__close-icon {
+  color: var(--text-muted) !important;
 }
 
 /* Autofill override: prevent browser blue tint on auto-filled inputs */

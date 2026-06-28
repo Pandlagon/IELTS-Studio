@@ -4,6 +4,7 @@
     <div class="page-header">
       <div class="header-text">
         <h2 class="page-title">
+          <el-button :icon="ArrowLeft" circle @click="router.back()" class="back-btn" />
           <i class="fa-solid fa-users-gear"></i>
           用户管理
         </h2>
@@ -266,12 +267,14 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Refresh, Plus } from '@element-plus/icons-vue'
+import { Refresh, Plus, ArrowLeft } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminUsersApi } from '@/api/adminUsers'
 import { adminPermissionsApi } from '@/api/adminPermissions'
 import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const loadError = ref('')
@@ -630,9 +633,15 @@ onMounted(() => {
   gap: 8px;
 }
 
+.page-title .back-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
 .page-subtitle {
   margin: 0;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -676,12 +685,12 @@ onMounted(() => {
 .dialog-hint {
   margin: 12px 0 0;
   font-size: 12px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
 }
 
 .perm-item {
   padding: 6px 0;
-  border-bottom: 1px dashed var(--border-light, #eee);
+  border-bottom: 1px dashed var(--border-light);
 }
 
 .perm-item:last-child {
@@ -701,7 +710,7 @@ onMounted(() => {
 
 .perm-desc {
   font-size: 12px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
 }
 
 :deep(.el-card__body) {

@@ -4,6 +4,7 @@
     <div class="page-header">
       <div class="header-text">
         <h2 class="page-title">
+          <el-button :icon="ArrowLeft" circle @click="router.back()" class="back-btn" />
           <i class="fa-solid fa-chart-line"></i>
           AI 使用统计
         </h2>
@@ -221,9 +222,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, ArrowLeft } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { adminAiUsageApi } from '@/api/adminAiUsage'
 
+const router = useRouter()
 const loading = ref(false)
 const loadError = ref('')
 const forbidden = ref(false)
@@ -339,6 +342,12 @@ onMounted(loadAll)
   flex-wrap: wrap;
 }
 
+.page-title .back-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
 .page-title {
   margin: 0 0 4px;
   font-size: 22px;
@@ -350,7 +359,7 @@ onMounted(loadAll)
 
 .page-subtitle {
   margin: 0;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -373,14 +382,14 @@ onMounted(loadAll)
 }
 
 .stat-card {
-  background: var(--color-card-bg, #fff);
-  border: 1px solid var(--color-border, #eee);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 14px 16px;
 }
 
 .stat-label {
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -388,6 +397,7 @@ onMounted(loadAll)
 .stat-value {
   font-size: 24px;
   font-weight: 600;
+  color: var(--text-primary);
 }
 
 .stat-success .stat-value { color: #22C55E; }
@@ -422,7 +432,7 @@ onMounted(loadAll)
 }
 
 .cell-error {
-  color: var(--color-text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 12px;
   word-break: break-all;
 }

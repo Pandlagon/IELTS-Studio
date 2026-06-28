@@ -629,6 +629,7 @@ Admin 菜单按权限显示
 USER 模式自填 key 不消耗 BUILTIN credits
 BUILTIN 模式 credits 正常扣减
 Provider failure 不泄露 key
+When checking usage records, note that one exam upload can generate both a main parse record and post-processing records such as `HEADING_EXTRACT`.
 ```
 
 ### Admin

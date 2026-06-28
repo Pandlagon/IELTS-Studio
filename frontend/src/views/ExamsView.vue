@@ -219,14 +219,14 @@
                     type="checkbox" 
                     v-model="uploadForm.parsePrecise" 
                     class="parse-mode-cb" 
-                    :disabled="uploadForm.type !== 'writing'"
+                    :disabled="preciseParseDisabled"
                   />
                   <span class="parse-mode-text">
-                    <strong>精准解析（Qwen 视觉解析）</strong>
-                    <span class="parse-mode-hint">适合扫描版、多栏布局、图形图片较多的试卷，解析耗时较长</span>
+                    <strong>精准解析（视觉模型）</strong>
+                    <span class="parse-mode-hint">适合扫描版 PDF、图片、多栏布局、图表/流程图题；阅读/写作均可使用，消耗更多 credits。</span>
                   </span>
                 </label>
-                <span v-if="uploadForm.type !== 'writing'" class="field-warn"><i class="fa-solid fa-triangle-exclamation"></i> 精准解析仅支持写作题型</span>
+                <span v-if="preciseParseDisabled" class="field-warn"><i class="fa-solid fa-triangle-exclamation"></i> 听力暂不支持精准解析；阅读/写作可用于扫描版、图片、多栏、图表场景。</span>
               </div>
             </div>
 
@@ -403,6 +403,16 @@ const tabCounts = ref({ all: 0, reading: null, listening: null, writing: null, m
 const uploadForm = ref({ title: '', type: 'reading', duration: 60, description: '', parsePrecise: false })
 const uploadTitleDup = ref(false)
 const collectionTitleDup = ref(false)
+const preciseParseDisabled = computed(() => uploadForm.value.type === 'listening')
+
+watch(
+  () => uploadForm.value.type,
+  (type) => {
+    if (type === 'listening') {
+      uploadForm.value.parsePrecise = false
+    }
+  }
+)
 
 const tabs = [
   { label: '全部', value: 'all' },

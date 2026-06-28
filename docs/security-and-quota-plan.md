@@ -47,6 +47,8 @@ IELTS Studio 的 AI 接口会真实调用第三方 provider（DeepSeek / Qwen / 
 
 > cost 必须与 `AiFeature` 枚举的 `builtinCost` 保持一致；可后续按真实成本调整，调整时同步更新本文件与枚举。
 
+Note: A single exam upload may produce multiple usage records. `EXAM_PARSE` / `EXAM_PRECISE_PARSE` are the main parse calls, while `HEADING_EXTRACT` is a post-processing fallback used to enrich heading-matching options. Therefore users may see a main parse record followed by a smaller post-processing record.
+
 ---
 
 ## 3. 用户自填 API Key 模式（USER）

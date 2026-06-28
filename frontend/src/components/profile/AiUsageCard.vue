@@ -82,6 +82,7 @@
             {{ usage.recentRecords.length }} 条
           </span>
         </div>
+        <p class="records-note">一次试卷解析可能包含主解析记录和少量后处理辅助记录。</p>
 
         <el-table
           v-if="usage.recentRecords?.length"
@@ -204,7 +205,7 @@ const FEATURE_LABELS = {
   EXAM_PARSE: '普通试卷解析',
   EXAM_PRECISE_PARSE: '精准视觉解析',
   WRITING_GUIDANCE: '写作思路生成',
-  HEADING_EXTRACT: '标题列表抽取',
+  HEADING_EXTRACT: '标题列表抽取（解析后处理）',
 }
 
 /** provider 中文映射（与后端 AiProviderType 枚举对齐） */
@@ -386,6 +387,12 @@ defineExpose({ refresh: loadData })
 
 .records-count {
   font-size: 11px;
+}
+
+.records-note {
+  margin: -4px 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .records-table {

@@ -1,5 +1,6 @@
 package com.ieltsstudio.service;
 
+import com.ieltsstudio.dto.admin.AdminCreateUserRequest;
 import com.ieltsstudio.dto.admin.AdminUserDto;
 import com.ieltsstudio.dto.admin.AdminUserPageDto;
 import com.ieltsstudio.entity.User;
@@ -79,6 +80,51 @@ public class AdminUserService {
         dto.setPageSize((long) safePageSize);
         dto.setPages(safePageSize == 0 ? 0L : (long) Math.ceil((double) total / safePageSize));
         return dto;
+    }
+
+    /**
+     * 管理员新增用户。
+     *
+     * <p>规则：
+     * <ul>
+     *   <li>role 必须是 USER / ADMIN（白名单校验，不信任前端）。</li>
+     *   <li>username / email 必须未被占用（含已禁用用户，避免唯一约束冲突）。</li>
+     *   <li>密码使用 {@link PasswordEncoder#encode(CharSequence)} 存储 BCrypt 哈希。</li>
+     *   <li>不记录明文密码日志。</li>
+     *   <li>返回的 DTO 不包含 password。</li>
+     * </ul>
+     *
+     * @param request 新增用户请求（username/email/password/role，已在 Controller 层做基本校验）
+     * @return 创建后的用户 DTO（不包含 password）
+     * @throws IllegalArgumentException role 非法
+     * @throws RuntimeException         用户名或邮箱已被占用
+     */
+    public AdminUserDto createUser(AdminCreateUserRequest request) {
+        String role = request.getRole();
+        if (role == null || !ALLOWED_ROLES.contains(role)) {
+            throw new IllegalArgumentException("非法的 role 值：" + role);
+        }
+        String username = request.getUsername().trim();
+        String email = request.getEmail().trim();
+
+        // 唯一性校验（含已禁用用户，避免撞 UNIQUE 约束）
+        Long conflict = userMapper.countByUsernameOrEmail(username, email);
+        if (conflict != null && conflict > 0) {
+            throw new RuntimeException("用户名或邮箱已被占用");
+        }
+
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setRole(role);
+        user.setDeleted(0);
+        userMapper.insert(user);
+
+        // 重新查询拿到数据库生成的 id / createdAt / updatedAt
+        User saved = userMapper.selectByUsernameOrEmailIncludingDeleted(username, email);
+        log.info("管理员创建用户成功：username={}, role={}", username, role);
+        return toDto(saved != null ? saved : user);
     }
 
     /**

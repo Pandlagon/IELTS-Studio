@@ -10,6 +10,7 @@
         <p class="page-subtitle">管理端用户列表、角色修改、禁用/启用、重置密码</p>
       </div>
       <div class="header-actions">
+        <el-button type="primary" :icon="Plus" @click="openCreateDialog">新增用户</el-button>
         <el-button :icon="Refresh" @click="loadUsers" :loading="loading">刷新</el-button>
       </div>
     </div>
@@ -123,6 +124,49 @@
       </el-card>
     </template>
 
+    <!-- 新增用户 Dialog -->
+    <el-dialog v-model="createDialog.visible" title="新增用户" width="460px" :close-on-click-modal="false">
+      <div class="dialog-body">
+        <el-form label-position="top">
+          <el-form-item label="用户名">
+            <el-input v-model="createDialog.username" placeholder="3~32 位" />
+          </el-form-item>
+          <el-form-item label="邮箱">
+            <el-input v-model="createDialog.email" placeholder="user@example.com" />
+          </el-form-item>
+          <el-form-item label="初始密码">
+            <el-input
+              v-model="createDialog.password"
+              type="password"
+              show-password
+              placeholder="至少 8 位"
+              autocomplete="new-password"
+            />
+          </el-form-item>
+          <el-form-item label="确认密码">
+            <el-input
+              v-model="createDialog.confirmPassword"
+              type="password"
+              show-password
+              placeholder="再次输入初始密码"
+              autocomplete="new-password"
+            />
+          </el-form-item>
+          <el-form-item label="角色">
+            <el-radio-group v-model="createDialog.role">
+              <el-radio value="USER">USER</el-radio>
+              <el-radio value="ADMIN">ADMIN</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+        <p class="dialog-hint">密码将使用 BCrypt 加密存储，不会以明文返回。</p>
+      </div>
+      <template #footer>
+        <el-button @click="closeCreateDialog">取消</el-button>
+        <el-button type="primary" :loading="createDialog.submitting" @click="submitCreate">确认创建</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 修改角色 Dialog -->
     <el-dialog v-model="roleDialog.visible" title="修改角色" width="380px" :close-on-click-modal="false">
       <div class="dialog-body">
@@ -175,7 +219,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminUsersApi } from '@/api/adminUsers'
 import { useAuthStore } from '@/stores/auth'
@@ -202,6 +246,16 @@ const roleDialog = reactive({
   visible: false,
   user: null,
   newRole: 'USER',
+  submitting: false,
+})
+
+const createDialog = reactive({
+  visible: false,
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  role: 'USER',
   submitting: false,
 })
 
@@ -260,6 +314,65 @@ function onSizeChange(size) {
   pagination.pageSize = size
   pagination.page = 1
   loadUsers()
+}
+
+// ─── 新增用户 ───────────────────────────────────────────────────────────────
+
+function openCreateDialog() {
+  createDialog.username = ''
+  createDialog.email = ''
+  createDialog.password = ''
+  createDialog.confirmPassword = ''
+  createDialog.role = 'USER'
+  createDialog.visible = true
+}
+
+function closeCreateDialog() {
+  createDialog.visible = false
+  createDialog.username = ''
+  createDialog.email = ''
+  createDialog.password = ''
+  createDialog.confirmPassword = ''
+  createDialog.role = 'USER'
+}
+
+async function submitCreate() {
+  if (!createDialog.username || createDialog.username.trim().length < 3) {
+    ElMessage.warning('用户名至少 3 位')
+    return
+  }
+  if (!createDialog.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createDialog.email)) {
+    ElMessage.warning('邮箱格式不正确')
+    return
+  }
+  if (!createDialog.password || createDialog.password.length < 8) {
+    ElMessage.warning('初始密码长度至少 8 位')
+    return
+  }
+  if (createDialog.password !== createDialog.confirmPassword) {
+    ElMessage.warning('两次输入的密码不一致')
+    return
+  }
+  createDialog.submitting = true
+  try {
+    const created = await adminUsersApi.createUser({
+      username: createDialog.username.trim(),
+      email: createDialog.email.trim(),
+      password: createDialog.password,
+      role: createDialog.role,
+    })
+    ElMessage.success('用户已创建')
+    closeCreateDialog()
+    // 跳到第一页并刷新，确保新用户可见
+    pagination.page = 1
+    await loadUsers()
+    // created 不含 password，无需额外处理
+    void created
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || err?.message || '创建失败')
+  } finally {
+    createDialog.submitting = false
+  }
 }
 
 // ─── 修改角色 ───────────────────────────────────────────────────────────────

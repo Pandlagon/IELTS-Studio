@@ -105,4 +105,26 @@ public interface UserMapper extends BaseMapper<User> {
      */
     @Select("SELECT COUNT(*) FROM users WHERE role = 'ADMIN' AND deleted = 0")
     Long countActiveAdmins();
+
+    /**
+     * 统计所有 ADMIN 用户数量（包含已禁用 deleted=1），用于启动时管理员初始化的幂等判断：
+     * 只要库中曾存在过 ADMIN（即使被禁用），就不再用环境变量凭据自动创建新的管理员，
+     * 避免初始密码被重新激活。
+     */
+    @Select("SELECT COUNT(*) FROM users WHERE role = 'ADMIN'")
+    Long countAllAdminsIncludingDeleted();
+
+    /**
+     * 检查 username 或 email 是否已被占用（含已禁用用户），用于启动时管理员初始化的冲突检测，
+     * 避免插入时撞 users.username / users.email 的 UNIQUE 约束。
+     */
+    @Select("SELECT COUNT(*) FROM users WHERE username = #{username} OR email = #{email}")
+    Long countByUsernameOrEmail(@Param("username") String username, @Param("email") String email);
+
+    /**
+     * 按 username 或 email 查询用户（含已禁用 deleted=1），用于启动时管理员初始化的"升级现有账号"分支：
+     * 若目标用户名/邮箱已存在且为 USER，则升级为 ADMIN 并重置密码。
+     */
+    @Select("SELECT * FROM users WHERE username = #{username} OR email = #{email} LIMIT 1")
+    User selectByUsernameOrEmailIncludingDeleted(@Param("username") String username, @Param("email") String email);
 }

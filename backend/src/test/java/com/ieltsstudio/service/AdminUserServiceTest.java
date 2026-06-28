@@ -1,5 +1,6 @@
 package com.ieltsstudio.service;
 
+import com.ieltsstudio.dto.admin.AdminCreateUserRequest;
 import com.ieltsstudio.dto.admin.AdminUserDto;
 import com.ieltsstudio.dto.admin.AdminUserPageDto;
 import com.ieltsstudio.entity.User;
@@ -216,6 +217,78 @@ class AdminUserServiceTest {
         // 验证 DTO 不含 password 的 getter
         assertFalse(hasField(AdminUserDto.class, "password"),
                 "AdminUserDto 不应有 password 字段");
+    }
+
+    // ─── 11. createUser 应拒绝非法 role ────────────────────────────────────────
+
+    @Test
+    void createUserShouldRejectInvalidRole() {
+        AdminCreateUserRequest req = buildCreateRequest("bob", "bob@test.com", "Password123!", "SUPER_ADMIN");
+        assertThrows(IllegalArgumentException.class, () -> service.createUser(req),
+                "role=SUPER_ADMIN 应被拒绝");
+        verify(userMapper, never()).insert(any(User.class));
+    }
+
+    // ─── 12. createUser 应拒绝用户名/邮箱占用 ──────────────────────────────────
+
+    @Test
+    void createUserShouldRejectDuplicateUsernameOrEmail() {
+        when(userMapper.countByUsernameOrEmail("bob", "bob@test.com")).thenReturn(1L);
+        AdminCreateUserRequest req = buildCreateRequest("bob", "bob@test.com", "Password123!", "USER");
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.createUser(req));
+        assertTrue(ex.getMessage().contains("已被占用"), "应提示已被占用");
+        verify(userMapper, never()).insert(any(User.class));
+        // 不应接触 password 编码
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    // ─── 13. createUser 正常创建并 BCrypt 加密、不返回 password ─────────────────
+
+    @Test
+    void createUserShouldEncodePasswordAndNotExposeIt() {
+        when(userMapper.countByUsernameOrEmail("carol", "carol@test.com")).thenReturn(0L);
+        when(passwordEncoder.encode("Password123!")).thenReturn("$2a$10$encoded_hash");
+        User saved = newUser(99L, "carol", "carol@test.com", "USER", 0);
+        saved.setPassword("$2a$10$encoded_hash");
+        when(userMapper.selectByUsernameOrEmailIncludingDeleted("carol", "carol@test.com")).thenReturn(saved);
+
+        AdminCreateUserRequest req = buildCreateRequest("carol", "carol@test.com", "Password123!", "USER");
+        AdminUserDto dto = service.createUser(req);
+
+        // 验证 BCrypt 加密被调用
+        verify(passwordEncoder, times(1)).encode("Password123!");
+        // 验证 insert 被调用
+        verify(userMapper, times(1)).insert(any(User.class));
+        // 返回的 DTO 不含 password
+        assertEquals(99L, dto.getId());
+        assertEquals("carol", dto.getUsername());
+        assertEquals("USER", dto.getRole());
+        assertFalse(hasField(AdminUserDto.class, "password"), "DTO 不应有 password 字段");
+    }
+
+    // ─── 14. createUser 可创建 ADMIN 角色 ──────────────────────────────────────
+
+    @Test
+    void createUserShouldAllowAdminRole() {
+        when(userMapper.countByUsernameOrEmail(anyString(), anyString())).thenReturn(0L);
+        when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hash");
+        User saved = newUser(50L, "dave", "dave@test.com", "ADMIN", 0);
+        when(userMapper.selectByUsernameOrEmailIncludingDeleted(anyString(), anyString())).thenReturn(saved);
+
+        AdminCreateUserRequest req = buildCreateRequest("dave", "dave@test.com", "Password123!", "ADMIN");
+        AdminUserDto dto = service.createUser(req);
+
+        assertEquals("ADMIN", dto.getRole());
+    }
+
+    private AdminCreateUserRequest buildCreateRequest(String username, String email, String password, String role) {
+        AdminCreateUserRequest req = new AdminCreateUserRequest();
+        req.setUsername(username);
+        req.setEmail(email);
+        req.setPassword(password);
+        req.setRole(role);
+        return req;
     }
 
     // ─── 辅助 ───────────────────────────────────────────────────────────────────

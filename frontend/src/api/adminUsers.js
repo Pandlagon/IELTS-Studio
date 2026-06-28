@@ -17,6 +17,12 @@ export const adminUsersApi = {
     return res.data
   },
 
+  /** 新增用户（管理员创建，BCrypt 加密，不返回 password） */
+  async createUser(payload) {
+    const res = await request.post('/admin/users', payload)
+    return res.data
+  },
+
   /** 查询单个用户详情 */
   async getUser(id) {
     const res = await request.get(`/admin/users/${id}`)

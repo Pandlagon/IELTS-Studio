@@ -33,6 +33,32 @@
 | `SPRING_DATA_REDIS_PORT` | `6379` | Redis 端口 |
 | `SPRING_DATA_REDIS_PASSWORD` | （空） | Redis 密码，生产建议设置 |
 | `SPRING_DATA_REDIS_DATABASE` | `0` | Redis database 编号 |
+| `INIT_ADMIN_USERNAME` | （空） | 启动时自动初始化的内置管理员用户名；三项同时配置且库中无 ADMIN 时生效 |
+| `INIT_ADMIN_EMAIL` | （空） | 内置管理员邮箱 |
+| `INIT_ADMIN_PASSWORD` | （空） | 内置管理员初始密码（明文注入，后端启动后立即 BCrypt 哈希存储，不落盘明文） |
+
+---
+
+### 2.1 Built-in admin bootstrap（内置管理员初始化）
+
+后端 `AdminBootstrapConfig` 在应用启动时通过 `ApplicationRunner` 执行幂等初始化：
+
+- 读取 `INIT_ADMIN_USERNAME` / `INIT_ADMIN_EMAIL` / `INIT_ADMIN_PASSWORD`（对应 `app.init-admin.*`）。
+- **三项任意为空 → 跳过**（不影响现有行为，未配置即不创建）。
+- **库中已存在任意 ADMIN（含已禁用 `deleted=1`）→ 跳过**，避免重启重复创建、避免初始密码被重新激活。
+- **目标 username/email 未被占用 → 创建新 ADMIN 用户**。
+- **目标 username/email 已被占用（且库中无 ADMIN）→ 将该现有 USER 升级为 ADMIN 并重置密码**；若该账号被禁用则一并启用。（幂等：升级后该用户成为 ADMIN，下次启动因已有 ADMIN 跳过，密码不会被再次重置）
+- 密码使用 `PasswordEncoder.encode(...)` 存储 BCrypt 哈希，**日志只记录 username，不记录明文密码**。
+- 初始化/升级成功后，该环境变量即不再生效（因幂等判断），后续密码修改走后台「用户管理」。
+
+**生产推荐流程：**
+
+1. 首次部署时注入 `INIT_ADMIN_*` 三项环境变量。
+2. 启动后端，日志出现 `管理员账号初始化完成：username=...` 或 `已将现有用户升级为管理员并重置密码：username=...` 即成功。
+3. 用该账号登录后台，**立即在「用户管理」页面重置密码**为高强度密码。
+4. 之后可清除 `INIT_ADMIN_PASSWORD` 环境变量（保留也不影响，因幂等跳过）。
+
+> 若库中已存在 ADMIN 但需要新增管理员，直接由现有 ADMIN 在后台「用户管理」提升其他用户角色即可，无需再用环境变量。
 
 ---
 
@@ -156,6 +182,10 @@ DEEPSEEK_API_KEY=your_deepseek_key
 QWEN_API_KEY=your_dashscope_key
 MIMO_API_KEY=your_mimo_key
 AI_KEY_ENCRYPTION_SECRET=your_local_encryption_secret
+# 首次启动自动创建内置管理员（创建后可清空）
+INIT_ADMIN_USERNAME=admin
+INIT_ADMIN_EMAIL=admin@example.com
+INIT_ADMIN_PASSWORD=your_strong_initial_password
 ```
 
 启动后端：

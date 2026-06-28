@@ -1,6 +1,7 @@
 package com.ieltsstudio.controller;
 
 import com.ieltsstudio.common.Result;
+import com.ieltsstudio.dto.admin.AdminCreateUserRequest;
 import com.ieltsstudio.dto.admin.AdminResetPasswordRequest;
 import com.ieltsstudio.dto.admin.AdminUpdateUserRoleRequest;
 import com.ieltsstudio.dto.admin.AdminUserDto;
@@ -64,6 +65,20 @@ public class AdminUserController {
             @RequestParam(required = false) String status) {
         requireAdmin(authUser);
         return Result.success(adminUserService.listUsers(page, pageSize, keyword, role, status));
+    }
+
+    /**
+     * 新增用户。
+     *
+     * <p>规则：role 白名单（USER/ADMIN）、username/email 唯一性、密码 BCrypt 加密、不返回 password。
+     * userId / role 一律以服务端处理为准，不信任前端。</p>
+     */
+    @PostMapping
+    public Result<AdminUserDto> create(
+            @AuthenticationPrincipal AuthUser authUser,
+            @Valid @RequestBody AdminCreateUserRequest request) {
+        requireAdmin(authUser);
+        return Result.success(adminUserService.createUser(request));
     }
 
     /**

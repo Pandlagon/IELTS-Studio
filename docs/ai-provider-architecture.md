@@ -170,6 +170,6 @@ SomeService 组装业务结果 → Result.success(...)
 | Phase 6B-1 | ✅ 已完成 | AI usage 查询接口与用户中心额度展示：`GET /api/users/me/ai-usage`，展示当前周期 credits、keyMode、最近 usage records |
 | Phase 6B-2A | ✅ 已完成 | `ai_usage_records.provider` 字段落地：`AiUsageGuard` provider-aware overload，主 AI 调用点写入 provider，用户中心最近记录展示 provider |
 | Phase 6B-2B | ✅ 已完成 | 管理端 AI usage 统计接口与统计面板：按 status / provider / feature / keyMode / taskType / daily trend 聚合，支持最近 records 查看 |
-| Phase 6B-2C | 后续 | Redis 分布式 rate limit |
+| Phase 6B-2C | ✅ 已完成 | USER 模式 Redis 分布式 rate limit：优先 Redis INCR + TTL 固定窗口，Redis 不可用时降级到单机内存限流 |
 
 > 各阶段应独立 PR，小步推进，每阶段都要跑通验证命令（`mvn test` / `npm run build`）。

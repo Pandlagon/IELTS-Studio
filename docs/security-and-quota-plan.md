@@ -118,10 +118,10 @@ IELTS Studio 的 AI 接口会真实调用第三方 provider（DeepSeek / Qwen / 
 
 - **扣费模型**：BUILTIN 采用「调用前预扣 + 失败回滚」。`AiUsageGuard.checkBeforeCall` 通过原子 `UPDATE ... SET credits_used = credits_used + cost WHERE credits_total - credits_used >= cost` 预扣，避免高并发下超卖；`markFailure` 用 `GREATEST(credits_used - cost, 0)` 回滚。`markSuccess` 不再扣费，仅写 SUCCESS 流水。
 - **周期规则**：自然周（周一 00:00 ~ 下周一 00:00），默认每周 30 credits，quota 行按 `(user_id, period_start)` 唯一约束，并发插入冲突时回退查询。Quota creation defensively reloads the inserted row if the database/ORM does not populate the auto-increment ID back into the entity.
-- **USER 模式限流**：本阶段使用**单机内存**滑动窗口（`ConcurrentHashMap` + 按分钟计数），每用户每 feature 每分钟 20 次，多实例不共享。
+- **USER 模式限流**：本阶段使用**单机内存**滑动窗口（`ConcurrentHashMap` + 按分钟计数），每用户每 feature 每分钟 20 次，多实例不共享。Phase 6B-2C 起升级为 Redis 分布式限流（见 §6.5），内存限流保留为降级路径。
 - **流水状态**：`SUCCESS` / `FAILED` / `REJECTED` 三种，`REJECTED` 用于额度不足（BUILTIN）或限流触发（USER），cost 均为 0。
 - **errorMessage 脱敏**：移除 `Authorization: Bearer xxx` / `Bearer xxx` / `sk-xxx`，截断到 500 字符（对齐 `error_message VARCHAR(500)`）。
-- **待 Phase 6B-2C**：Redis 分布式限流。管理端统计已在 Phase 6B-2B 落地（见 §6.4），Provider 字段记录已在 Phase 6B-2A 落地（见 §6.3）。
+- **Phase 6B-2C 已落地**：USER 模式 Redis 分布式限流（见 §6.5）。管理端统计已在 Phase 6B-2B 落地（见 §6.4），Provider 字段记录已在 Phase 6B-2A 落地（见 §6.3）。
 
 ### 6.2 Phase 6B-1：额度查询与展示
 
@@ -151,3 +151,13 @@ IELTS Studio 的 AI 接口会真实调用第三方 provider（DeepSeek / Qwen / 
 - 统计 service 只读：不 insert / update / delete 任何数据；查询范围内全部 records 后在 Java 内 stream 聚合，避免写复杂 SQL。
 - 前端 `views/admin/AdminAiUsageView.vue` 仅 ADMIN 可见入口（NavBar 条件渲染 + 路由守卫 `requiresAdmin`）；后端 `/admin/**` 仍会返回 403 兜底，前端展示「无权限」提示。
 - 不返回 API Key / encrypted key / masked key / baseUrl / model / provider 原始响应体 / 用户密码 / 用户邮箱。
+
+### 6.5 Phase 6B-2C：Redis 分布式限流
+
+- USER 模式 rate limit 优先使用 Redis 固定窗口：`INCR ai:rate:user:{userId}:feature:{feature}:minute:{epochMinute}`，首次写入设置 TTL（70 秒，略大于 60 秒窗口确保过期清理）。
+- Redis key 不包含 API Key、provider、baseUrl、model、prompt 或请求正文，仅含 userId / feature / epochMinute。
+- Redis 不可用时降级到单机内存限流，保证 AI 功能可用，但多实例一致性依赖 Redis。
+- `AiRedisRateLimiter` bean 通过 `@ConditionalOnProperty(app.redis.enabled=true)` 控制；关闭时 `AiUsageGuard` 经 `ObjectProvider` 拿不到该 bean，自动走内存路径。
+- Redis 操作抛异常时由 `AiUsageGuard` 捕获并 fallback，**不向用户暴露** Redis 异常 message。
+- 限流触发仍写 `ai_usage_records` 的 `REJECTED` 流水，cost=0，provider 字段保留。
+- 不修改数据库表结构、不修改扣费策略、不新增依赖、不修改 BUILTIN 预扣/回滚逻辑。

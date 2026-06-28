@@ -9,6 +9,7 @@ import com.ieltsstudio.entity.AiUsageRecord;
 import com.ieltsstudio.mapper.AiUsageQuotaMapper;
 import com.ieltsstudio.mapper.AiUsageRecordMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
@@ -25,8 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <ul>
  *   <li><b>BUILTIN 模式</b>：每用户每周 30 credits，采用「调用前预扣 + 失败回滚」模型，
  *       保证高并发下不超卖。额度不足写 REJECTED 流水并拒绝调用。</li>
- *   <li><b>USER 模式</b>：不消耗站点 credits，仅做单机内存 rate limit（每用户每 feature 每分钟 20 次），
- *       超限写 REJECTED 流水并拒绝调用。</li>
+ *   <li><b>USER 模式</b>：不消耗站点 credits，每用户每 feature 每分钟 20 次 rate limit。
+ *       Phase 6B-2C 起优先使用 Redis 分布式限流（{@link AiRedisRateLimiter}），
+ *       Redis 不可用时降级到单机内存限流；超限写 REJECTED 流水并拒绝调用。</li>
  *   <li>所有调用结果均写 {@code ai_usage_records} 流水：SUCCESS / FAILED / REJECTED。</li>
  *   <li>errorMessage 必须脱敏，禁止记录 API Key / Authorization / provider 原始 body。</li>
  * </ul>
@@ -61,12 +63,24 @@ public class AiUsageGuard {
     private final AiUsageQuotaMapper quotaMapper;
     private final AiUsageRecordMapper recordMapper;
 
-    // TODO(Phase 6B-2C): replace in-memory limiter with Redis-based distributed rate limit.
+    /** Phase 6B-2C 起 USER 模式优先走 Redis 分布式限流；为 null 时降级到单机内存限流 */
+    private final AiRedisRateLimiter redisRateLimiter;
+
+    // Redis unavailable fallback: single-node in-memory limiter. Multi-instance consistency depends on Redis.
     private final ConcurrentHashMap<String, RateWindow> rateLimitMap = new ConcurrentHashMap<>();
 
-    public AiUsageGuard(AiUsageQuotaMapper quotaMapper, AiUsageRecordMapper recordMapper) {
+    /**
+     * 构造函数注入 {@link ObjectProvider}，使 {@link AiRedisRateLimiter} 成为可选依赖。
+     *
+     * <p>当 {@code app.redis.enabled=false} 时 {@link AiRedisRateLimiter} bean 不存在，
+     * {@code getIfAvailable()} 返回 null，{@link #checkUserRateLimit} 自动降级到内存限流。</p>
+     */
+    public AiUsageGuard(AiUsageQuotaMapper quotaMapper,
+                        AiUsageRecordMapper recordMapper,
+                        ObjectProvider<AiRedisRateLimiter> redisRateLimiterProvider) {
         this.quotaMapper = quotaMapper;
         this.recordMapper = recordMapper;
+        this.redisRateLimiter = redisRateLimiterProvider.getIfAvailable();
     }
 
     /**
@@ -224,18 +238,42 @@ public class AiUsageGuard {
     }
 
     // ─── USER 模式限流 ─────────────────────────────────────────────────────────
-    // 单机内存限流，多实例不共享。后续 Phase 6B 改为 Redis 分布式限流。
+    // Phase 6B-2C：优先使用 Redis 分布式限流（多实例共享计数）；
+    // Redis 不可用或抛异常时降级到单机内存限流，保证 AI 功能可用。
 
     private void checkUserRateLimit(Long userId, AiFeature feature, String provider) {
+        boolean allowed;
+        if (redisRateLimiter != null) {
+            try {
+                allowed = redisRateLimiter.isAllowed(userId, feature, USER_RATE_LIMIT_PER_MINUTE);
+            } catch (Exception ex) {
+                log.warn("Redis rate limiter unavailable, falling back to in-memory limiter: {}",
+                        ex.getClass().getSimpleName());
+                allowed = checkInMemoryRateLimit(userId, feature);
+            }
+        } else {
+            allowed = checkInMemoryRateLimit(userId, feature);
+        }
+
+        if (!allowed) {
+            insertRecord(userId, feature, AiKeyMode.USER, provider, STATUS_REJECTED, 0, "RATE_LIMITED");
+            throw new IllegalStateException("请求过于频繁，请稍后再试");
+        }
+    }
+
+    /**
+     * 单机内存限流（Redis 降级路径）。
+     *
+     * <p>返回 {@code true} 表示放行；{@code false} 表示触发限流。
+     * 不直接写流水、不抛异常，由 {@link #checkUserRateLimit} 统一处理。</p>
+     */
+    private boolean checkInMemoryRateLimit(Long userId, AiFeature feature) {
         String key = userId + ":" + feature.name();
         long minute = System.currentTimeMillis() / 60_000L;
         RateWindow window = rateLimitMap.compute(key, (k, existing) ->
                 (existing == null || existing.minute != minute) ? new RateWindow(minute) : existing);
         int count = window.count.incrementAndGet();
-        if (count > USER_RATE_LIMIT_PER_MINUTE) {
-            insertRecord(userId, feature, AiKeyMode.USER, provider, STATUS_REJECTED, 0, "RATE_LIMITED");
-            throw new IllegalStateException("请求过于频繁，请稍后再试");
-        }
+        return count <= USER_RATE_LIMIT_PER_MINUTE;
     }
 
     // ─── 公共辅助 ───────────────────────────────────────────────────────────────

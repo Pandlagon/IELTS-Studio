@@ -9,6 +9,7 @@ import com.ieltsstudio.mapper.AiUsageRecordMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,6 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -24,10 +28,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link AiUsageGuard} 单元测试（Phase 6A）。
+ * {@link AiUsageGuard} 单元测试（Phase 6A + Phase 6B-2C）。
  *
  * <p>不连接真实数据库：{@link AiUsageQuotaMapper} / {@link AiUsageRecordMapper} 用 Mockito mock。
- * 验证 BUILTIN 预扣+回滚、USER 内存限流、流水写入与 errorMessage 脱敏。</p>
+ * 不连接真实 Redis：{@link AiRedisRateLimiter} / {@link ObjectProvider} 用 Mockito mock。
+ * 验证 BUILTIN 预扣+回滚、USER 限流（Redis 优先 + 内存降级）、流水写入与 errorMessage 脱敏。</p>
  */
 class AiUsageGuardTest {
 
@@ -41,7 +46,17 @@ class AiUsageGuardTest {
     void setUp() {
         quotaMapper = mock(AiUsageQuotaMapper.class);
         recordMapper = mock(AiUsageRecordMapper.class);
-        guard = new AiUsageGuard(quotaMapper, recordMapper);
+        // 默认构造时不注入 Redis limiter（模拟 app.redis.enabled=false），
+        // 保持旧用例语义：USER 走单机内存限流。
+        guard = newGuardWithRedis(null);
+    }
+
+    /** 构造 guard 并注入可选的 Redis limiter mock；传 null 模拟 Redis 未启用 */
+    @SuppressWarnings("unchecked")
+    private AiUsageGuard newGuardWithRedis(AiRedisRateLimiter redisMock) {
+        ObjectProvider<AiRedisRateLimiter> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(redisMock);
+        return new AiUsageGuard(quotaMapper, recordMapper, provider);
     }
 
     // ─── 1. BUILTIN：当前周期无 quota 时创建并预扣 ─────────────────────────────
@@ -369,5 +384,106 @@ class AiUsageGuardTest {
         AiUsageRecord failRec = failCaptor.getAllValues().get(1);
         assertEquals("FAILED", failRec.getStatus());
         assertNull(failRec.getProvider(), "旧 markFailure 也应写入 provider=null");
+    }
+
+    // ─── 14. Phase 6B-2C：USER 限流优先使用 Redis limiter ───────────────────────
+
+    @Test
+    void userRateLimitShouldUseRedisLimiterWhenAvailable() {
+        AiRedisRateLimiter redisMock = mock(AiRedisRateLimiter.class);
+        when(redisMock.isAllowed(eq(USER_ID), eq(AiFeature.AI_CHAT), anyInt())).thenReturn(true);
+        AiUsageGuard g = newGuardWithRedis(redisMock);
+
+        g.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "DEEPSEEK");
+
+        // Redis limiter 被调用一次
+        verify(redisMock, times(1)).isAllowed(eq(USER_ID), eq(AiFeature.AI_CHAT), anyInt());
+        // 没写 REJECTED 流水（仅 checkBeforeCall，未调 markSuccess，故 recordMapper.insert 总次数为 0）
+        verify(recordMapper, never()).insert(any(AiUsageRecord.class));
+    }
+
+    // ─── 15. Phase 6B-2C：Redis limiter 拒绝时写 REJECTED 流水，provider 保留 ──
+
+    @Test
+    void userRateLimitShouldRejectWhenRedisLimiterRejects() {
+        AiRedisRateLimiter redisMock = mock(AiRedisRateLimiter.class);
+        when(redisMock.isAllowed(eq(USER_ID), eq(AiFeature.AI_CHAT), anyInt())).thenReturn(false);
+        AiUsageGuard g = newGuardWithRedis(redisMock);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> g.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "QWEN"));
+        assertTrue(ex.getMessage().contains("请求过于频繁"));
+        // 不向用户暴露 Redis 内部细节
+        assertFalse(ex.getMessage().toLowerCase().contains("redis"));
+
+        ArgumentCaptor<AiUsageRecord> recCaptor = ArgumentCaptor.forClass(AiUsageRecord.class);
+        verify(recordMapper).insert(recCaptor.capture());
+        AiUsageRecord rec = recCaptor.getValue();
+        assertEquals("REJECTED", rec.getStatus());
+        assertEquals("QWEN", rec.getProvider(), "Redis 拒绝路径仍需写入 provider");
+        assertEquals("USER", rec.getKeyMode());
+        assertEquals("AI_CHAT", rec.getFeature());
+        assertEquals(0, rec.getCost());
+        assertEquals("RATE_LIMITED", rec.getErrorMessage());
+    }
+
+    // ─── 16. Phase 6B-2C：Redis limiter 抛异常时降级到内存限流 ────────────────
+
+    @Test
+    void userRateLimitShouldFallbackToMemoryWhenRedisThrows() {
+        AiRedisRateLimiter redisMock = mock(AiRedisRateLimiter.class);
+        // 每次调用 Redis 都抛异常，模拟 Redis 不可用
+        when(redisMock.isAllowed(anyLong(), any(), anyInt()))
+                .thenThrow(new RuntimeException("Redis connection refused"));
+        AiUsageGuard g = newGuardWithRedis(redisMock);
+
+        // 前 20 次：Redis 抛异常 → fallback 内存 → 内存计数 1..20，全部通过
+        for (int i = 0; i < 20; i++) {
+            g.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "MIMO");
+        }
+        // 第 21 次：Redis 抛异常 → fallback 内存 → 内存计数 21 > 20 → 拒绝
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> g.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "MIMO"));
+        assertTrue(ex.getMessage().contains("请求过于频繁"));
+        // 不向用户暴露 Redis 异常 message
+        assertFalse(ex.getMessage().toLowerCase().contains("redis"));
+        assertFalse(ex.getMessage().contains("connection refused"));
+
+        // Redis limiter 被调用 21 次（每次都 fallback）
+        verify(redisMock, times(21)).isAllowed(anyLong(), any(), anyInt());
+
+        // 仅第 21 次写了一条 REJECTED 流水
+        ArgumentCaptor<AiUsageRecord> recCaptor = ArgumentCaptor.forClass(AiUsageRecord.class);
+        verify(recordMapper).insert(recCaptor.capture());
+        AiUsageRecord rec = recCaptor.getValue();
+        assertEquals("REJECTED", rec.getStatus());
+        assertEquals("MIMO", rec.getProvider(), "fallback 路径仍需写入 provider");
+        assertEquals("USER", rec.getKeyMode());
+        assertEquals("RATE_LIMITED", rec.getErrorMessage());
+    }
+
+    // ─── 17. Phase 6B-2C：Redis limiter bean 不存在时走内存，保持旧行为 ───────
+
+    @Test
+    void userRateLimitShouldFallbackToMemoryWhenNoRedisLimiterBean() {
+        // ObjectProvider.getIfAvailable() 返回 null（app.redis.enabled=false 或无 bean）
+        // setUp 已经构造了这样的 guard，直接复用
+
+        // 前 20 次通过
+        for (int i = 0; i < 20; i++) {
+            guard.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "OPENAI_COMPATIBLE");
+        }
+        // 第 21 次被限流
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> guard.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.USER, "OPENAI_COMPATIBLE"));
+        assertTrue(ex.getMessage().contains("请求过于频繁"));
+
+        ArgumentCaptor<AiUsageRecord> recCaptor = ArgumentCaptor.forClass(AiUsageRecord.class);
+        verify(recordMapper).insert(recCaptor.capture());
+        AiUsageRecord rec = recCaptor.getValue();
+        assertEquals("REJECTED", rec.getStatus());
+        assertEquals("OPENAI_COMPATIBLE", rec.getProvider(), "无 Redis bean 时仍需写入 provider");
+        assertEquals("USER", rec.getKeyMode());
+        assertEquals("RATE_LIMITED", rec.getErrorMessage());
     }
 }

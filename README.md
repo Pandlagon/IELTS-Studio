@@ -290,6 +290,16 @@ GitHub Actions 会在每次 push / pull request 时自动运行 backend tests、
 
 ---
 
+## Deployment and local development
+
+For non-Docker local development and manual deployment, see:
+
+- [docs/manual-deployment-runbook.md](./docs/manual-deployment-runbook.md)：普通环境部署与本地调试 Runbook（本地启动 / 生产构建 / CORS / Smoke test / 常见问题排查）
+- [docs/deployment-config.md](./docs/deployment-config.md)：完整部署配置说明（必填 / 可选变量、Redis 开关、加密密钥、生产安全 checklist）
+- [docs/release-checklist.md](./docs/release-checklist.md)：发布检查项、部署方式、数据库迁移、回滚说明
+
+---
+
 ## 试卷解析模式
 
 ### 普通解析（推荐优先尝试）

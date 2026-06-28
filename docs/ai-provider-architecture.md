@@ -182,5 +182,6 @@ SomeService 组装业务结果 → Result.success(...)
 | Phase 8B | ✅ 已完成 | Admin AI 额度管理后台：查看当前周期 quota、设置总额度、增加额度、重置已用额度（无 quota 行时读操作返回默认视图不创建、写操作创建当前周期 quota 行；不修改 AI Provider / 扣费 / rate limit / usage records 逻辑；未改 DB 结构） |
 | Phase 8C | ✅ 已完成 | Admin 轻量权限增强：保留 USER/ADMIN 基础角色，新增 admin_user_permissions 表与后台权限分配，支持不同 ADMIN 拥有不同管理权限 |
 | Phase 8D | ✅ 已完成 | Admin 操作审计日志：记录管理端高风险写操作（创建/修改/禁用/启用/重置密码/quota/权限），支持按 actor/action/resource/status/time 查询，summary 脱敏不含 password/API Key/token/Bearer/sk-* values；新增 ADMIN_AUDIT_LOG_VIEW 权限与前端审计日志页面 |
+| Phase 9A | ✅ 已完成 | 普通环境部署与本地调试 Runbook：Java 21 / MySQL / Redis 可选 / Node + Vite，覆盖本地启动、生产构建、手动部署、CORS、Smoke Test 与常见问题 |
 
 > 各阶段应独立 PR，小步推进，每阶段都要跑通验证命令（`mvn test` / `npm run build`）。

@@ -121,4 +121,14 @@ IELTS Studio 的 AI 接口会真实调用第三方 provider（DeepSeek / Qwen / 
 - **USER 模式限流**：本阶段使用**单机内存**滑动窗口（`ConcurrentHashMap` + 按分钟计数），每用户每 feature 每分钟 20 次，多实例不共享。
 - **流水状态**：`SUCCESS` / `FAILED` / `REJECTED` 三种，`REJECTED` 用于额度不足（BUILTIN）或限流触发（USER），cost 均为 0。
 - **errorMessage 脱敏**：移除 `Authorization: Bearer xxx` / `Bearer xxx` / `sk-xxx`，截断到 500 字符（对齐 `error_message VARCHAR(500)`）。
-- **待 Phase 6B**：Redis 分布式限流、额度查询接口、前端额度展示、provider 字段统计。
+- **待 Phase 6B-2**：Redis 分布式限流、provider 字段统计、管理端统计。
+
+### 6.2 Phase 6B-1：额度查询与展示
+
+- 用户可通过 `GET /api/users/me/ai-usage` 查询当前周期 credits 与最近 20 条使用记录。
+- **查询接口只读**：不会创建 quota 行，也不会扣费；无 quota 时返回默认视图（creditsTotal=30, creditsUsed=0, creditsRemaining=30），避免用户只是打开页面就触发 quota 落库。
+- userId 只能从 `@AuthenticationPrincipal AuthUser` 取，**不信任**前端传入的 userId。
+- DTO 仅返回：`keyMode` / `periodStart` / `periodEnd` / `creditsTotal` / `creditsUsed` / `creditsRemaining` / `builtinQuotaEnabled` / `recentRecords`；record DTO 仅返回：`createdAt` / `taskType` / `feature` / `cost` / `keyMode` / `status` / `errorMessage`。**不返回** API Key / encrypted key / masked key / provider 原始 body。
+- errorMessage 已由 `AiUsageGuard` 在写入时脱敏，查询接口不再加工。
+- USER 模式不消耗站点 credits，但仍展示最近 usage records 与限流说明；视觉上弱化站点额度参考，避免用户误以为 USER 模式也会消耗 credits。
+- 前端 `AiUsageCard.vue` 集成到 `ProfileView.vue` 的 `AiSettingsCard` 之后；不写入本地存储，不打印 payload。

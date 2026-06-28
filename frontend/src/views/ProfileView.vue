@@ -168,6 +168,9 @@
         <!-- AI 设置卡片 -->
         <AiSettingsCard />
 
+        <!-- AI 额度卡片 -->
+        <AiUsageCard />
+
       </div>
     </div>
 
@@ -203,6 +206,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import NavBar from '@/components/NavBar.vue'
 import AiSettingsCard from '@/components/profile/AiSettingsCard.vue'
+import AiUsageCard from '@/components/profile/AiUsageCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useWordStore } from '@/stores/word'
 import { useExamStore } from '@/stores/exam'

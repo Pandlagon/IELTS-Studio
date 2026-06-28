@@ -286,3 +286,24 @@ CREATE TABLE IF NOT EXISTS ai_usage_records (
 -- CREATE TABLE IF NOT EXISTS user_ai_settings (...);
 -- CREATE TABLE IF NOT EXISTS ai_usage_quota (...);
 -- CREATE TABLE IF NOT EXISTS ai_usage_records (...);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Phase 8C：Admin 轻量权限
+-- admin_user_permissions 记录 ADMIN 账号被分配的后台细粒度权限。
+-- 兼容策略：表为空 → 所有 ADMIN 拥有全部权限（兼容老部署）；
+--           表非空 → 进入显式权限模式，ADMIN 需有对应 permission 才能访问对应模块。
+-- 仅 USER/ADMIN 两级基础角色不变；本表只对 ADMIN 内部做权限细分。
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS admin_user_permissions (
+    id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    permission  VARCHAR(80)  NOT NULL,                     -- AdminPermission 枚举名
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_admin_user_permission (user_id, permission),
+    INDEX idx_admin_user_permissions_user_id (user_id),
+    INDEX idx_admin_user_permissions_permission (permission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration: run this if upgrading an existing deployment without admin_user_permissions table
+-- CREATE TABLE IF NOT EXISTS admin_user_permissions (...);

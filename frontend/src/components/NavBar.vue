@@ -54,13 +54,13 @@
                 <el-dropdown-item command="profile">
                   <el-icon><User /></el-icon> 个人中心
                 </el-dropdown-item>
-                <el-dropdown-item v-if="authStore.isAdmin" command="adminUsers">
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_USERS_VIEW')" command="adminUsers">
                   <el-icon><UserFilled /></el-icon> 用户管理
                 </el-dropdown-item>
-                <el-dropdown-item v-if="authStore.isAdmin" command="adminQuotas">
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_QUOTA_VIEW')" command="adminQuotas">
                   <el-icon><Coin /></el-icon> 额度管理
                 </el-dropdown-item>
-                <el-dropdown-item v-if="authStore.isAdmin" command="adminAiUsage">
+                <el-dropdown-item v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AI_USAGE_VIEW')" command="adminAiUsage">
                   <el-icon><DataLine /></el-icon> AI 使用统计
                 </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
@@ -97,13 +97,13 @@
         </template>
         <template v-else>
           <router-link to="/profile" class="mobile-link" @click="mobileOpen = false">个人中心</router-link>
-          <router-link v-if="authStore.isAdmin" to="/admin/users" class="mobile-link" @click="mobileOpen = false">
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_USERS_VIEW')" to="/admin/users" class="mobile-link" @click="mobileOpen = false">
             <i class="fa-solid fa-users-gear"></i> 用户管理
           </router-link>
-          <router-link v-if="authStore.isAdmin" to="/admin/quotas" class="mobile-link" @click="mobileOpen = false">
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_QUOTA_VIEW')" to="/admin/quotas" class="mobile-link" @click="mobileOpen = false">
             <i class="fa-solid fa-coins"></i> 额度管理
           </router-link>
-          <router-link v-if="authStore.isAdmin" to="/admin/ai-usage" class="mobile-link" @click="mobileOpen = false">
+          <router-link v-if="authStore.isAdmin && authStore.hasAdminPermission('ADMIN_AI_USAGE_VIEW')" to="/admin/ai-usage" class="mobile-link" @click="mobileOpen = false">
             <i class="fa-solid fa-chart-line"></i> AI 使用统计
           </router-link>
           <button class="mobile-link mobile-logout" @click="handleLogout">退出登录</button>
@@ -143,7 +143,13 @@ function handleLogout() {
   router.push('/')
 }
 
-onMounted(() => window.addEventListener('scroll', handleScroll))
+onMounted(() => {
+  window.addEventListener('scroll', handleScroll)
+  // Phase 8C：登录态下懒加载当前 ADMIN 权限，用于按权限显示后台菜单
+  if (authStore.isLoggedIn && authStore.isAdmin && !authStore.adminPermissionsLoaded) {
+    authStore.loadAdminPermissions()
+  }
+})
 onUnmounted(() => window.removeEventListener('scroll', handleScroll))
 </script>
 

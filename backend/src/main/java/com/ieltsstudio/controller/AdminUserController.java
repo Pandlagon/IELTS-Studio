@@ -6,7 +6,9 @@ import com.ieltsstudio.dto.admin.AdminResetPasswordRequest;
 import com.ieltsstudio.dto.admin.AdminUpdateUserRoleRequest;
 import com.ieltsstudio.dto.admin.AdminUserDto;
 import com.ieltsstudio.dto.admin.AdminUserPageDto;
+import com.ieltsstudio.entity.AdminPermission;
 import com.ieltsstudio.security.AuthUser;
+import com.ieltsstudio.service.AdminPermissionService;
 import com.ieltsstudio.service.AdminUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,9 +33,21 @@ import org.springframework.web.bind.annotation.RestController;
  * <p><b>鉴权：</b>所有接口必须 ADMIN 角色访问。
  * <ul>
  *   <li>Spring Security 已对 {@code /admin/**} 配置 {@code hasRole("ADMIN")}（见 SecurityConfig）。</li>
- *   <li>Controller 内 {@link #requireAdmin(AuthUser)} 做防御性二次校验，不信任前端传 role。</li>
+ *   <li>Controller 内 {@link #requireAdmin(AuthUser, AdminPermission)} 做防御性二次校验 +
+ *       精细权限校验（Phase 8C）。</li>
  *   <li>userId / role 一律从 {@code @AuthenticationPrincipal AuthUser} 取。</li>
  * </ul>
+ *
+ * <p><b>Phase 8C 精细权限：</b>
+ * <ul>
+ *   <li>{@code GET /admin/users} / {@code GET /admin/users/{id}} → {@link AdminPermission#ADMIN_USERS_VIEW}</li>
+ *   <li>{@code POST /admin/users} / {@code PUT /admin/users/{id}/role} /
+ *       {@code PUT /admin/users/{id}/disable} / {@code PUT /admin/users/{id}/enable} →
+ *       {@link AdminPermission#ADMIN_USERS_MANAGE}</li>
+ *   <li>{@code POST /admin/users/{id}/reset-password} →
+ *       {@link AdminPermission#ADMIN_USERS_RESET_PASSWORD}</li>
+ * </ul>
+ * 兼容模式（permissions 表为空）下所有 ADMIN 拥有全部权限。</p>
  *
  * <p><b>安全：</b>所有返回的 DTO 均不包含 password 字段；重置密码使用 BCrypt 加密；
  * 不记录明文密码日志。</p>
@@ -45,15 +59,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
+    private final AdminPermissionService adminPermissionService;
 
     /**
      * 用户列表（分页 + 筛选）。
      *
-     * @param page     页码，默认 1，最小 1
-     * @param pageSize 每页条数，默认 20，范围 1~100
-     * @param keyword  关键字（匹配 username / email）
-     * @param role     角色过滤：USER / ADMIN
-     * @param status   状态过滤：ALL / ACTIVE / DISABLED
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_VIEW}</p>
      */
     @GetMapping
     public Result<AdminUserPageDto> list(
@@ -63,12 +74,14 @@ public class AdminUserController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String status) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_VIEW);
         return Result.success(adminUserService.listUsers(page, pageSize, keyword, role, status));
     }
 
     /**
      * 新增用户。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_MANAGE}</p>
      *
      * <p>规则：role 白名单（USER/ADMIN）、username/email 唯一性、密码 BCrypt 加密、不返回 password。
      * userId / role 一律以服务端处理为准，不信任前端。</p>
@@ -77,23 +90,27 @@ public class AdminUserController {
     public Result<AdminUserDto> create(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody AdminCreateUserRequest request) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_MANAGE);
         return Result.success(adminUserService.createUser(request));
     }
 
     /**
      * 用户详情。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_VIEW}</p>
      */
     @GetMapping("/{id}")
     public Result<AdminUserDto> detail(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_VIEW);
         return Result.success(adminUserService.getUser(id));
     }
 
     /**
      * 修改用户角色。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_MANAGE}</p>
      *
      * <p>保护：不能降级自己、不能降级最后一个 ADMIN、role 只能是 USER / ADMIN。</p>
      */
@@ -102,12 +119,14 @@ public class AdminUserController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
             @Valid @RequestBody AdminUpdateUserRoleRequest request) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_MANAGE);
         return Result.success(adminUserService.updateRole(authUser.getId(), id, request.getRole()));
     }
 
     /**
      * 禁用用户（deleted = 1）。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_MANAGE}</p>
      *
      * <p>保护：不能禁用自己、不能禁用最后一个 ADMIN。</p>
      */
@@ -115,23 +134,27 @@ public class AdminUserController {
     public Result<AdminUserDto> disable(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_MANAGE);
         return Result.success(adminUserService.disableUser(authUser.getId(), id));
     }
 
     /**
      * 启用用户（deleted = 0）。不改变其 role。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_MANAGE}</p>
      */
     @PutMapping("/{id}/enable")
     public Result<AdminUserDto> enable(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_MANAGE);
         return Result.success(adminUserService.enableUser(authUser.getId(), id));
     }
 
     /**
      * 重置用户密码。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_USERS_RESET_PASSWORD}</p>
      *
      * <p>安全：使用 BCrypt 加密存储，不返回 password，不记录明文密码日志。
      * 允许管理员重置自己的密码（token 仍由当前登录流程处理）。</p>
@@ -141,20 +164,21 @@ public class AdminUserController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
             @Valid @RequestBody AdminResetPasswordRequest request) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_USERS_RESET_PASSWORD);
         adminUserService.resetPassword(id, request.getNewPassword());
         return Result.success();
     }
 
     /**
-     * 防御性 ADMIN 校验。
+     * 防御性 ADMIN 校验 + 精细权限校验（Phase 8C）。
      *
      * <p>Spring Security 已在路由层做 {@code hasRole("ADMIN")} 拦截，
-     * 此处做二次校验防止配置遗漏或内部直接调用绕过安全过滤。</p>
+     * 此处做二次校验防止配置遗漏，并要求精细权限以兼容模式/显式模式规则判断。</p>
      */
-    private void requireAdmin(AuthUser authUser) {
+    private void requireAdmin(AuthUser authUser, AdminPermission permission) {
         if (authUser == null || !"ADMIN".equals(authUser.getRole())) {
             throw new AccessDeniedException("ADMIN required");
         }
+        adminPermissionService.requirePermission(authUser.getId(), permission);
     }
 }

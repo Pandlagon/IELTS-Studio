@@ -87,9 +87,16 @@
               <span>{{ formatDateTime(row.updatedAt) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="260" fixed="right">
+          <el-table-column label="操作" width="320" fixed="right">
             <template #default="{ row }">
               <el-button size="small" link type="primary" @click="openRoleDialog(row)">修改角色</el-button>
+              <el-button
+                v-if="authStore.hasAdminPermission('ADMIN_PERMISSIONS_MANAGE')"
+                size="small"
+                link
+                type="primary"
+                @click="openPermissionDialog(row)"
+              >权限</el-button>
               <el-button
                 v-if="row.deleted === 0"
                 size="small"
@@ -214,6 +221,46 @@
         <el-button type="danger" :loading="pwdDialog.submitting" @click="submitResetPassword">确认重置</el-button>
       </template>
     </el-dialog>
+
+    <!-- 权限配置 Dialog（Phase 8C） -->
+    <el-dialog v-model="permDialog.visible" title="权限配置" width="520px" :close-on-click-modal="false">
+      <div class="dialog-body">
+        <p class="dialog-tip">
+          用户：<b>{{ permDialog.user?.username }}</b>（ID: {{ permDialog.user?.id }}，角色：{{ permDialog.user?.role }}）
+        </p>
+        <p v-if="permDialog.user?.role !== 'ADMIN'" class="dialog-hint">
+          普通用户无后台权限。请先将其角色修改为 ADMIN 后再配置权限。
+        </p>
+        <template v-else>
+          <p class="dialog-hint">
+            显式权限模式：<el-tag v-if="permDialog.explicitMode" size="small" type="warning">已启用</el-tag>
+            <el-tag v-else size="small" type="success">未启用（所有 ADMIN 拥有全部权限）</el-tag>
+          </p>
+          <el-checkbox-group v-model="permDialog.selected">
+            <div v-for="perm in allPermissions" :key="perm.value" class="perm-item">
+              <el-checkbox :value="perm.value" :label="perm.value">
+                <div class="perm-label">
+                  <span class="perm-name">{{ perm.value }}</span>
+                  <span class="perm-desc">{{ perm.desc }}</span>
+                </div>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+          <p class="dialog-hint">
+            安全规则：不能移除自己的「ADMIN_PERMISSIONS_MANAGE」；不能移除系统中最后一个权限管理者。后端会再次校验。
+          </p>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="permDialog.visible = false">取消</el-button>
+        <el-button
+          v-if="permDialog.user?.role === 'ADMIN'"
+          type="primary"
+          :loading="permDialog.submitting"
+          @click="submitPermissions"
+        >保存权限</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -222,6 +269,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { Refresh, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminUsersApi } from '@/api/adminUsers'
+import { adminPermissionsApi } from '@/api/adminPermissions'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -229,6 +277,20 @@ const loading = ref(false)
 const loadError = ref('')
 const forbidden = ref(false)
 const users = ref([])
+
+/**
+ * 全部权限枚举（与后端 AdminPermission 对齐）+ 中文说明。
+ * 用于权限配置 Dialog 的 checkbox 列表。
+ */
+const allPermissions = [
+  { value: 'ADMIN_USERS_VIEW', desc: '查看用户列表 / 用户详情' },
+  { value: 'ADMIN_USERS_MANAGE', desc: '创建用户 / 修改角色 / 禁用 / 启用' },
+  { value: 'ADMIN_USERS_RESET_PASSWORD', desc: '重置用户密码' },
+  { value: 'ADMIN_AI_USAGE_VIEW', desc: '查看 AI usage 统计后台' },
+  { value: 'ADMIN_QUOTA_VIEW', desc: '查看用户 quota' },
+  { value: 'ADMIN_QUOTA_MANAGE', desc: '调整用户 quota（setTotal / grant / resetUsed）' },
+  { value: 'ADMIN_PERMISSIONS_MANAGE', desc: '分配 / 修改其他 ADMIN 的权限（最高风险）' },
+]
 
 const filters = reactive({
   keyword: '',
@@ -264,6 +326,14 @@ const pwdDialog = reactive({
   user: null,
   newPassword: '',
   confirmPassword: '',
+  submitting: false,
+})
+
+const permDialog = reactive({
+  visible: false,
+  user: null,
+  selected: [],         // 选中的权限枚举名数组
+  explicitMode: false,  // 后端返回的当前 explicit mode 状态
   submitting: false,
 })
 
@@ -483,7 +553,55 @@ async function submitResetPassword() {
   }
 }
 
-onMounted(loadUsers)
+// ─── 权限配置（Phase 8C）─────────────────────────────────────────────────────
+
+async function openPermissionDialog(user) {
+  permDialog.user = user
+  permDialog.selected = []
+  permDialog.explicitMode = false
+  permDialog.visible = true
+  // 拉取当前用户的权限视图（含 explicitMode 与 permissions）
+  try {
+    const dto = await adminPermissionsApi.getUserPermissions(user.id)
+    permDialog.explicitMode = !!dto?.explicitMode
+    permDialog.selected = Array.isArray(dto?.permissions) ? [...dto.permissions] : []
+  } catch (err) {
+    // 拉取失败时仍打开 Dialog，但提示错误（可能是 explicit mode + 无 ADMIN_PERMISSIONS_MANAGE）
+    ElMessage.error(err?.response?.data?.message || err?.message || '加载权限失败')
+  }
+}
+
+async function submitPermissions() {
+  if (!permDialog.user) return
+  // 前端提示：不能移除自己的 ADMIN_PERMISSIONS_MANAGE（后端会再次校验）
+  const isSelf = permDialog.user.id === authStore.user?.id
+  if (isSelf && !permDialog.selected.includes('ADMIN_PERMISSIONS_MANAGE')) {
+    ElMessage.warning('不能移除自己的 ADMIN_PERMISSIONS_MANAGE 权限')
+    return
+  }
+  permDialog.submitting = true
+  try {
+    await adminPermissionsApi.updateUserPermissions(permDialog.user.id, [...permDialog.selected])
+    ElMessage.success('权限已更新')
+    permDialog.visible = false
+    // 如果改的是自己的权限，刷新本地 authStore 的 adminPermissions
+    if (isSelf) {
+      await authStore.loadAdminPermissions()
+    }
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.message || err?.message || '保存权限失败')
+  } finally {
+    permDialog.submitting = false
+  }
+}
+
+onMounted(() => {
+  // Phase 8C：进入用户管理页面前确保已加载当前 ADMIN 权限（用于显示「权限」按钮）
+  if (authStore.isAdmin && !authStore.adminPermissionsLoaded) {
+    authStore.loadAdminPermissions()
+  }
+  loadUsers()
+})
 </script>
 
 <style scoped>
@@ -556,6 +674,31 @@ onMounted(loadUsers)
 
 .dialog-hint {
   margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary, #888);
+}
+
+.perm-item {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border-light, #eee);
+}
+
+.perm-item:last-child {
+  border-bottom: none;
+}
+
+.perm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.perm-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.perm-desc {
   font-size: 12px;
   color: var(--color-text-secondary, #888);
 }

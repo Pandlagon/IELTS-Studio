@@ -10,7 +10,7 @@
 - 位置：`backend/src/main/resources/db/init.sql`
 - 数据库名：`ielts_studio`
 - 字符集：`utf8mb4` / `utf8mb4_unicode_ci`
-- 现有表：`users`、`exams`、`exam_sections`、`questions`、`exam_records`、`error_book`、`word_books`、`word_entries`、`word_progress`、`word_study_states`、`exam_collections`、`exam_collection_items`、`study_checkins`
+- 现有表：`users`、`exams`、`exam_sections`、`questions`、`exam_records`、`error_book`、`word_books`、`word_entries`、`word_progress`、`word_study_states`、`exam_collections`、`exam_collection_items`、`study_checkins`、`user_ai_settings`、`ai_usage_quota`、`ai_usage_records`、`admin_user_permissions`
 - 命名约定：表名/字段名 snake_case，时间字段 `created_at` / `updated_at`，软删除字段 `deleted TINYINT(1)`
 
 ---
@@ -155,7 +155,61 @@ CREATE TABLE IF NOT EXISTS ai_usage_records (
 
 ---
 
-## 7. 改动流程总结
+## 7. `admin_user_permissions` 表
+
+> ✅ **已于 Phase 8C 实现**，建表 SQL 见 `backend/src/main/resources/db/init.sql`。
+> 对应 Entity：`com.ieltsstudio.entity.AdminUserPermission` + 枚举 `com.ieltsstudio.entity.AdminPermission`；
+> Mapper：`AdminUserPermissionMapper`；Service：`AdminPermissionService`。
+
+```sql
+CREATE TABLE IF NOT EXISTS admin_user_permissions (
+    id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    permission  VARCHAR(80)  NOT NULL,                     -- AdminPermission 枚举名
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_admin_user_permission (user_id, permission),
+    INDEX idx_admin_user_permissions_user_id (user_id),
+    INDEX idx_admin_user_permissions_permission (permission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+字段说明：
+
+| 字段 | 说明 |
+|---|---|
+| `user_id` | 关联 `users.id`，目标必须是 `role=ADMIN` |
+| `permission` | `AdminPermission` 枚举名（如 `ADMIN_USERS_VIEW` / `ADMIN_PERMISSIONS_MANAGE`） |
+| `created_at` | 标准时间字段（无 `updated_at`，权限记录不可修改，只能先删后插） |
+| `uk_admin_user_permission` | `(user_id, permission)` 唯一约束防重复 |
+
+### 兼容模式（explicit permission mode）
+
+- **表为空** → 兼容模式：所有 ADMIN 拥有全部权限（老部署升级不会把管理员锁在后台外）。
+- **表非空** → 显式模式：ADMIN 需有对应 permission 才能访问对应模块。
+- 判断逻辑：`AdminPermissionService.isExplicitPermissionMode()` 通过 `count(*) FROM admin_user_permissions` 是否为 0 决定。
+
+### 安全规则
+
+`AdminPermissionService.updateUserPermissions(...)` 强制执行 5 条规则：
+1. 只有 ADMIN 可以拥有权限（target 非 ADMIN 拒绝）。
+2. 不能移除自己的 `ADMIN_PERMISSIONS_MANAGE`。
+3. 不能移除系统中最后一个 `ADMIN_PERMISSIONS_MANAGE`。
+4. 显式模式启动保护：更新后全系统不允许没有任何 `ADMIN_PERMISSIONS_MANAGE`。
+5. 权限白名单：传入权限必须全部存在于 `AdminPermission` 枚举中。
+
+### Migration note
+
+已有部署升级时执行（已在 `init.sql` 末尾以注释形式保留）：
+
+```sql
+-- Migration: run this if upgrading an existing deployment without admin_user_permissions table
+-- CREATE TABLE IF NOT EXISTS admin_user_permissions (...);
+```
+
+---
+
+## 8. 改动流程总结
 
 ```
 改 init.sql（CREATE / ALTER）

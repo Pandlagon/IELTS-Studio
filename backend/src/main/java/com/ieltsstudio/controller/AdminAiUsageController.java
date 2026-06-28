@@ -4,7 +4,9 @@ import com.ieltsstudio.ai.service.AdminAiUsageStatsService;
 import com.ieltsstudio.common.Result;
 import com.ieltsstudio.dto.ai.AdminAiUsageRecentRecordDto;
 import com.ieltsstudio.dto.ai.AdminAiUsageSummaryDto;
+import com.ieltsstudio.entity.AdminPermission;
 import com.ieltsstudio.security.AuthUser;
+import com.ieltsstudio.service.AdminPermissionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -25,9 +27,13 @@ import java.util.List;
  * <p><b>鉴权：</b>所有接口必须 ADMIN 角色访问。
  * <ul>
  *   <li>Spring Security 已对 {@code /admin/**} 配置 {@code hasRole("ADMIN")}（见 SecurityConfig）。</li>
- *   <li>Controller 内 {@link #requireAdmin(AuthUser)} 做防御性二次校验，不信任前端传 role。</li>
+ *   <li>Controller 内 {@link #requireAdmin(AuthUser, AdminPermission)} 做防御性二次校验 +
+ *       精细权限校验（Phase 8C）。</li>
  *   <li>userId / role 一律从 {@code @AuthenticationPrincipal AuthUser} 取。</li>
  * </ul>
+ *
+ * <p><b>Phase 8C 精细权限：</b>所有接口要求 {@link AdminPermission#ADMIN_AI_USAGE_VIEW}。
+ * 兼容模式（permissions 表为空）下所有 ADMIN 拥有全部权限。</p>
  *
  * <p><b>只读：</b>本 Controller 不 insert / update / delete 任何数据。</p>
  */
@@ -38,9 +44,12 @@ import java.util.List;
 public class AdminAiUsageController {
 
     private final AdminAiUsageStatsService statsService;
+    private final AdminPermissionService adminPermissionService;
 
     /**
      * 汇总最近 N 天的 AI usage 统计。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_AI_USAGE_VIEW}</p>
      *
      * @param days 统计天数，默认 7，范围 {@code [1, 90]}，越界自动 clamp
      */
@@ -48,12 +57,14 @@ public class AdminAiUsageController {
     public Result<AdminAiUsageSummaryDto> summary(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(defaultValue = "7") int days) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_AI_USAGE_VIEW);
         return Result.success(statsService.summary(days));
     }
 
     /**
      * 查询最近 N 条 AI usage records，按 createdAt 倒序。
+     *
+     * <p>权限：{@link AdminPermission#ADMIN_AI_USAGE_VIEW}</p>
      *
      * @param limit 返回数量，默认 50，范围 {@code [1, 100]}，越界自动 clamp
      */
@@ -61,19 +72,17 @@ public class AdminAiUsageController {
     public Result<List<AdminAiUsageRecentRecordDto>> recent(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(defaultValue = "50") int limit) {
-        requireAdmin(authUser);
+        requireAdmin(authUser, AdminPermission.ADMIN_AI_USAGE_VIEW);
         return Result.success(statsService.recent(limit));
     }
 
     /**
-     * 防御性 ADMIN 校验。
-     *
-     * <p>Spring Security 已在路由层做 {@code hasRole("ADMIN")} 拦截，
-     * 此处做二次校验防止配置遗漏或内部直接调用绕过安全过滤。</p>
+     * 防御性 ADMIN 校验 + 精细权限校验（Phase 8C）。
      */
-    private void requireAdmin(AuthUser authUser) {
+    private void requireAdmin(AuthUser authUser, AdminPermission permission) {
         if (authUser == null || !"ADMIN".equals(authUser.getRole())) {
             throw new AccessDeniedException("ADMIN required");
         }
+        adminPermissionService.requirePermission(authUser.getId(), permission);
     }
 }

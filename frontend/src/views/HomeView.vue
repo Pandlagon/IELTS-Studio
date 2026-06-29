@@ -12,7 +12,8 @@
               <span class="tag-dot"></span>
               智能备考平台
             </div>
-            <h1 class="hero-title">
+             <h1 class="hero-title">
+              外文阅语<br />
               专注备考<br />
               <span class="hero-title-accent">高效提分</span>
             </h1>
@@ -108,18 +109,6 @@
       </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-inner">
-          <div class="footer-brand">
-            <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
-            <span class="logo-text">IELTS Studio</span>
-          </div>
-          <p class="footer-copy">© 2024 IELTS Studio. 专注雅思备考。</p>
-        </div>
-      </div>
-    </footer>
   </div>
 </template>
 

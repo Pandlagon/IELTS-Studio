@@ -37,7 +37,7 @@ import java.util.Set;
 public class AdminQuotaService {
 
     /** 每用户每周默认发放 credits，与 AiUsageGuard / AiUsageQueryService 保持一致 */
-    private static final int DEFAULT_WEEKLY_CREDITS = 30;
+    private static final int DEFAULT_WEEKLY_CREDITS = 100;
     private static final Set<String> ALLOWED_ROLES = Set.of("USER", "ADMIN");
 
     private final UserMapper userMapper;

@@ -13,7 +13,7 @@
           target="_blank"
           rel="noopener noreferrer"
           class="beian-link"
-        >浙 ICP 备 2026023842 号</a>
+        >浙ICP备2026023842号</a>
       </div>
     </footer>
   </div>

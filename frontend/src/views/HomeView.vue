@@ -13,7 +13,6 @@
               智能备考平台
             </div>
              <h1 class="hero-title">
-              外文阅语<br />
               专注备考<br />
               <span class="hero-title-accent">高效提分</span>
             </h1>

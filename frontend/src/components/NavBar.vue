@@ -4,7 +4,7 @@
       <!-- Logo -->
       <router-link to="/" class="nav-logo">
         <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
-        <span class="logo-text">IELTS Studio</span>
+        <span class="logo-text">IELTS Studio -<small class="logo-sub">外文阅语</small></span>
       </router-link>
 
       <!-- Center Nav Links -->
@@ -246,6 +246,15 @@ onUnmounted(() => window.removeEventListener('scroll', handleScroll))
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.3px;
+  display: inline-flex;
+  align-items: baseline;
+}
+.logo-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 4px;
+  letter-spacing: 0;
 }
 
 .nav-links {

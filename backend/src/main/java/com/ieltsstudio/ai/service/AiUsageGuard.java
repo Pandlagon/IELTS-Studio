@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class AiUsageGuard {
 
     /** 每用户每周默认发放 credits，后续可配置化 */
-    private static final int DEFAULT_WEEKLY_CREDITS = 30;
+    private static final int DEFAULT_WEEKLY_CREDITS = 100;
 
     /** USER 模式基础限流：每用户每 feature 每分钟调用上限 */
     private static final int USER_RATE_LIMIT_PER_MINUTE = 20;

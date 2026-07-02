@@ -37,7 +37,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AiUsageQueryService {
 
-    private static final int DEFAULT_WEEKLY_CREDITS = 30;
+    private static final int DEFAULT_WEEKLY_CREDITS = 100;
     private static final int RECENT_RECORD_LIMIT = 20;
     private static final String MODE_BUILTIN = "BUILTIN";
 

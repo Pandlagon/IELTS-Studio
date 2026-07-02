@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS ai_usage_quota (
     user_id         BIGINT   NOT NULL,
     period_start    DATETIME NOT NULL,
     period_end      DATETIME NOT NULL,
-    credits_total   INT      NOT NULL DEFAULT 30,
+    credits_total   INT      NOT NULL DEFAULT 100,
     credits_used    INT      NOT NULL DEFAULT 0,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

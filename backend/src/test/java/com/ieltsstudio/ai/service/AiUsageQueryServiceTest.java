@@ -59,9 +59,9 @@ class AiUsageQueryServiceTest {
         UserAiUsageDto dto = service.queryForUser(USER_ID);
 
         assertEquals("BUILTIN", dto.getKeyMode());
-        assertEquals(30, dto.getCreditsTotal());
+        assertEquals(100, dto.getCreditsTotal());
         assertEquals(0, dto.getCreditsUsed());
-        assertEquals(30, dto.getCreditsRemaining());
+        assertEquals(100, dto.getCreditsRemaining());
         assertTrue(dto.getBuiltinQuotaEnabled());
         assertNotNull(dto.getRecentRecords());
         assertTrue(dto.getRecentRecords().isEmpty());
@@ -112,9 +112,9 @@ class AiUsageQueryServiceTest {
         assertEquals("USER", dto.getKeyMode());
         assertFalse(dto.getBuiltinQuotaEnabled());
         // 站点额度仍返回默认参考值
-        assertEquals(30, dto.getCreditsTotal());
+        assertEquals(100, dto.getCreditsTotal());
         assertEquals(0, dto.getCreditsUsed());
-        assertEquals(30, dto.getCreditsRemaining());
+        assertEquals(100, dto.getCreditsRemaining());
         // 只读
         verify(quotaMapper, never()).insert(any(AiUsageQuota.class));
         verify(quotaMapper, never()).update(any(), any());

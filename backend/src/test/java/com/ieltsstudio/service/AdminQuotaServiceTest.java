@@ -62,9 +62,9 @@ class AdminQuotaServiceTest {
 
         assertEquals(1, dto.getRecords().size());
         AdminQuotaDto q = dto.getRecords().get(0);
-        assertEquals(30, q.getCreditsTotal(), "无 quota 行应返回默认 30");
+        assertEquals(100, q.getCreditsTotal(), "无 quota 行应返回默认 100");
         assertEquals(0, q.getCreditsUsed());
-        assertEquals(30, q.getCreditsRemaining());
+        assertEquals(100, q.getCreditsRemaining());
         assertFalse(q.getQuotaRowExists(), "quotaRowExists 应为 false");
         // 不应创建 quota 行
         verify(quotaMapper, never()).insert(any(AiUsageQuota.class));
@@ -175,7 +175,7 @@ class AdminQuotaServiceTest {
         AdminQuotaDto dto = service.resetUsed(1L);
 
         verify(quotaMapper, times(1)).insert(any(AiUsageQuota.class));
-        assertEquals(30, dto.getCreditsTotal());
+        assertEquals(100, dto.getCreditsTotal());
         assertEquals(0, dto.getCreditsUsed());
         assertTrue(dto.getQuotaRowExists());
     }

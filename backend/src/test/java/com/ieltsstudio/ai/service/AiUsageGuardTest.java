@@ -73,11 +73,11 @@ class AiUsageGuardTest {
 
         guard.checkBeforeCall(USER_ID, AiFeature.WRITING_GRADE, AiKeyMode.BUILTIN);
 
-        // 创建 quota：creditsTotal=30, creditsUsed=0
+        // 创建 quota：creditsTotal=100, creditsUsed=0
         ArgumentCaptor<AiUsageQuota> quotaCaptor = ArgumentCaptor.forClass(AiUsageQuota.class);
         verify(quotaMapper).insert(quotaCaptor.capture());
         AiUsageQuota created = quotaCaptor.getValue();
-        assertEquals(30, created.getCreditsTotal());
+        assertEquals(100, created.getCreditsTotal());
         assertEquals(0, created.getCreditsUsed());
 
         // 原子预扣执行

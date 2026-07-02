@@ -24,7 +24,7 @@ import java.util.Set;
  *
  * <p>仅管理当前自然周期 quota 行：
  * <ul>
- *   <li>读操作（list / get）在无 quota 行时返回虚拟默认视图（30/0/30），不创建行。</li>
+ *   <li>读操作（list / get）在无 quota 行时返回虚拟默认视图（100/0/100），不创建行。</li>
  *   <li>写操作（setTotal / grant / resetUsed）在无 quota 行时创建当前周期 quota 行。</li>
  *   <li>周期计算与 {@code AiUsageGuard} / {@code AiUsageQueryService} 保持一致：
  *       周一 00:00:00 到下周一 00:00:00（服务器默认时区）。</li>
@@ -113,7 +113,7 @@ public class AdminQuotaService {
     /**
      * 给当前周期增加 creditsTotal。
      * <ul>
-     *   <li>无 quota 行：创建（creditsTotal=30+credits, creditsUsed=0）。</li>
+     *   <li>无 quota 行：创建（creditsTotal=100+credits, creditsUsed=0）。</li>
      *   <li>已存在：creditsTotal += credits，不修改 creditsUsed。</li>
      * </ul>
      */
@@ -134,7 +134,7 @@ public class AdminQuotaService {
     /**
      * 重置当前周期 creditsUsed=0。
      * <ul>
-     *   <li>无 quota 行：创建默认 quota 行（creditsTotal=30, creditsUsed=0）。</li>
+     *   <li>无 quota 行：创建默认 quota 行（creditsTotal=100, creditsUsed=0）。</li>
      *   <li>已存在：creditsUsed=0。</li>
      * </ul>
      */

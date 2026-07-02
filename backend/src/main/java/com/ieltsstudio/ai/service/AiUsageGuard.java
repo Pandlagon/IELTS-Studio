@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Phase 6A 落地实现：</p>
  * <ul>
- *   <li><b>BUILTIN 模式</b>：每用户每周 30 credits，采用「调用前预扣 + 失败回滚」模型，
+ *   <li><b>BUILTIN 模式</b>：每用户每周 100 credits，采用「调用前预扣 + 失败回滚」模型，
  *       保证高并发下不超卖。额度不足写 REJECTED 流水并拒绝调用。</li>
  *   <li><b>USER 模式</b>：不消耗站点 credits，每用户每 feature 每分钟 20 次 rate limit。
  *       Phase 6B-2C 起优先使用 Redis 分布式限流（{@link AiRedisRateLimiter}），

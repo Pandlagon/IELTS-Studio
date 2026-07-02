@@ -119,7 +119,7 @@ public class AdminQuotaController {
     }
 
     /**
-     * 给当前周期增加 creditsTotal。无 quota 行时创建（creditsTotal=30+credits）。
+     * 给当前周期增加 creditsTotal。无 quota 行时创建（creditsTotal=100+credits）。
      *
      * <p>权限：{@link AdminPermission#ADMIN_QUOTA_MANAGE}</p>
      */
@@ -137,7 +137,7 @@ public class AdminQuotaController {
     }
 
     /**
-     * 重置当前周期 creditsUsed=0。无 quota 行时创建默认 quota 行（30/0）。
+     * 重置当前周期 creditsUsed=0。无 quota 行时创建默认 quota 行（100/0）。
      *
      * <p>权限：{@link AdminPermission#ADMIN_QUOTA_MANAGE}</p>
      */

@@ -94,7 +94,7 @@ class AiUsageGuardTest {
         AiUsageQuota reloaded = new AiUsageQuota();
         reloaded.setId(200L);
         reloaded.setUserId(USER_ID);
-        reloaded.setCreditsTotal(30);
+        reloaded.setCreditsTotal(100);
         reloaded.setCreditsUsed(0);
 
         when(quotaMapper.selectOne(any()))
@@ -134,8 +134,8 @@ class AiUsageGuardTest {
         AiUsageQuota quota = new AiUsageQuota();
         quota.setId(100L);
         quota.setUserId(USER_ID);
-        quota.setCreditsTotal(30);
-        quota.setCreditsUsed(30); // 已用完
+        quota.setCreditsTotal(100);
+        quota.setCreditsUsed(100); // 已用完
         when(quotaMapper.selectOne(any())).thenReturn(quota);
         when(quotaMapper.update(any(), any())).thenReturn(0); // 预扣失败
 
@@ -283,14 +283,14 @@ class AiUsageGuardTest {
         AiUsageQuota quota = new AiUsageQuota();
         quota.setId(100L);
         quota.setUserId(USER_ID);
-        quota.setCreditsTotal(30);
-        quota.setCreditsUsed(30); // 已用完
+        quota.setCreditsTotal(100);
+        quota.setCreditsUsed(100); // 已用完
         when(quotaMapper.selectOne(any())).thenReturn(quota);
         when(quotaMapper.update(any(), any())).thenReturn(0); // 预扣失败
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
-                () -> guard.checkBeforeCall(USER_ID, AiFeature.WRITING_GRADE, AiKeyMode.BUILTIN, "DEEPSEEK"));
-        assertTrue(ex.getMessage().contains("额度已用完"));
+                () -> guard.checkBeforeCall(USER_ID, AiFeature.AI_CHAT, AiKeyMode.BUILTIN, "DEEPSEEK"));
+        assertTrue(ex.getMessage().contains("credits"));
 
         ArgumentCaptor<AiUsageRecord> recCaptor = ArgumentCaptor.forClass(AiUsageRecord.class);
         verify(recordMapper).insert(recCaptor.capture());

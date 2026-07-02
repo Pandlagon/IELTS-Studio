@@ -78,16 +78,16 @@ class AiUsageQueryServiceTest {
         AiUsageQuota quota = new AiUsageQuota();
         quota.setId(10L);
         quota.setUserId(USER_ID);
-        quota.setCreditsTotal(30);
-        quota.setCreditsUsed(12);
+        quota.setCreditsTotal(100);
+        quota.setCreditsUsed(82);
         when(quotaMapper.selectOne(any())).thenReturn(quota);
         when(userAiSettingsMapper.selectOne(any())).thenReturn(null);
         when(recordMapper.selectList(any())).thenReturn(List.of());
 
         UserAiUsageDto dto = service.queryForUser(USER_ID);
 
-        assertEquals(30, dto.getCreditsTotal());
-        assertEquals(12, dto.getCreditsUsed());
+        assertEquals(100, dto.getCreditsTotal());
+        assertEquals(82, dto.getCreditsUsed());
         assertEquals(18, dto.getCreditsRemaining());
         // periodStart 为周一 00:00，periodEnd = periodStart + 1 周
         assertEquals(dto.getPeriodStart().plusWeeks(1), dto.getPeriodEnd());

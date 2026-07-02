@@ -23,7 +23,7 @@ public class UserAiUsageDto {
     /** 当前自然周结束（下周一 00:00:00） */
     private LocalDateTime periodEnd;
 
-    /** 周期总额度（默认 30） */
+    /** 周期总额度（默认 100） */
     private Integer creditsTotal;
 
     /** 周期已用额度 */

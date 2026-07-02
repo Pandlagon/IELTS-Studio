@@ -25,7 +25,7 @@ class AiUsageQuotaTest {
         q.setUserId(100L);
         q.setPeriodStart(start);
         q.setPeriodEnd(end);
-        q.setCreditsTotal(30);
+        q.setCreditsTotal(100);
         q.setCreditsUsed(5);
         q.setCreatedAt(now);
         q.setUpdatedAt(now);
@@ -34,7 +34,7 @@ class AiUsageQuotaTest {
         assertEquals(100L, q.getUserId());
         assertEquals(start, q.getPeriodStart());
         assertEquals(end, q.getPeriodEnd());
-        assertEquals(30, q.getCreditsTotal());
+        assertEquals(100, q.getCreditsTotal());
         assertEquals(5, q.getCreditsUsed());
         assertEquals(now, q.getCreatedAt());
         assertEquals(now, q.getUpdatedAt());
@@ -44,7 +44,7 @@ class AiUsageQuotaTest {
     void toStringShouldNotCrash() {
         AiUsageQuota q = new AiUsageQuota();
         q.setUserId(100L);
-        q.setCreditsTotal(30);
+        q.setCreditsTotal(100);
         q.setCreditsUsed(5);
         assertDoesNotThrow(() -> q.toString());
     }

@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
  * <p><b>安全：</b>本 DTO 不包含 {@code password} / {@code apiKey} / {@code encryptedKey} /
  * {@code maskedKey} / {@code baseUrl} / {@code model} 等敏感字段。
  * 当 {@link #quotaRowExists} 为 {@code false} 时，{@code credits*} 字段返回虚拟默认视图
- * （30/0/30），表示当前周期尚无 quota 行。</p>
+ * （100/0/100），表示当前周期尚无 quota 行。</p>
  */
 @Getter
 @Setter

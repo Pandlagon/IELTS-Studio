@@ -48,7 +48,7 @@ class AdminQuotaServiceTest {
         service = new AdminQuotaService(userMapper, quotaMapper);
     }
 
-    // ─── 1. listQuotas 无 quota 行时返回虚拟默认 30/0/30，不 insert ──────────────
+    // ─── 1. listQuotas 无 quota 行时返回虚拟默认 100/0/100，不 insert ─────────────
 
     @Test
     void listQuotasShouldReturnVirtualDefaultWhenQuotaMissing() {
@@ -133,18 +133,18 @@ class AdminQuotaServiceTest {
         assertEquals(95, dto.getCreditsRemaining());
     }
 
-    // ─── 6. grantCredits 无 quota 行时创建 30 + grant ────────────────────────────
+    // ─── 6. grantCredits 无 quota 行时创建 100 + grant ───────────────────────────
 
     @Test
     void grantCreditsShouldCreateQuotaWhenMissing() {
         when(userMapper.selectUserIncludingDeleted(1L)).thenReturn(newUser(1L, "frank", "frank@test.com", "USER", 0));
-        when(quotaMapper.selectOne(any())).thenReturn(null, newQuota(10L, 1L, 50, 0));
+        when(quotaMapper.selectOne(any())).thenReturn(null, newQuota(10L, 1L, 120, 0));
 
         AdminQuotaDto dto = service.grantCredits(1L, 20);
 
         verify(quotaMapper, times(1)).insert(any(AiUsageQuota.class));
-        // 新建时 creditsTotal = 30 + 20 = 50，creditsUsed = 0
-        assertEquals(50, dto.getCreditsTotal());
+        // 新建时 creditsTotal = 100 + 20 = 120，creditsUsed = 0
+        assertEquals(120, dto.getCreditsTotal());
         assertEquals(0, dto.getCreditsUsed());
     }
 
@@ -153,24 +153,24 @@ class AdminQuotaServiceTest {
     @Test
     void grantCreditsShouldIncreaseExistingTotal() {
         when(userMapper.selectUserIncludingDeleted(1L)).thenReturn(newUser(1L, "grace", "grace@test.com", "USER", 0));
-        AiUsageQuota existing = newQuota(10L, 1L, 30, 8);
+        AiUsageQuota existing = newQuota(10L, 1L, 100, 8);
         when(quotaMapper.selectOne(any())).thenReturn(existing);
 
         AdminQuotaDto dto = service.grantCredits(1L, 20);
 
-        assertEquals(50, existing.getCreditsTotal(), "creditsTotal 应为 30+20=50");
+        assertEquals(120, existing.getCreditsTotal(), "creditsTotal 应为 100+20=120");
         assertEquals(8, existing.getCreditsUsed(), "creditsUsed 不应被修改");
         verify(quotaMapper, times(1)).updateById(existing);
-        assertEquals(50, dto.getCreditsTotal());
-        assertEquals(42, dto.getCreditsRemaining());
+        assertEquals(120, dto.getCreditsTotal());
+        assertEquals(112, dto.getCreditsRemaining());
     }
 
-    // ─── 8. resetUsed 无 quota 行时创建默认 quota（30/0）────────────────────────
+    // ─── 8. resetUsed 无 quota 行时创建默认 quota（100/0）───────────────────────
 
     @Test
     void resetUsedShouldCreateDefaultQuotaWhenMissing() {
         when(userMapper.selectUserIncludingDeleted(1L)).thenReturn(newUser(1L, "henry", "henry@test.com", "USER", 0));
-        when(quotaMapper.selectOne(any())).thenReturn(null, newQuota(10L, 1L, 30, 0));
+        when(quotaMapper.selectOne(any())).thenReturn(null, newQuota(10L, 1L, 100, 0));
 
         AdminQuotaDto dto = service.resetUsed(1L);
 

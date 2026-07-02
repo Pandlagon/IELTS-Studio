@@ -34,7 +34,7 @@ public class AiUsageQuota {
 
     private LocalDateTime periodEnd;
 
-    /** 周期发放额度，默认 30 */
+    /** 周期发放额度，默认 100 */
     private Integer creditsTotal;
 
     /** 周期已使用额度 */

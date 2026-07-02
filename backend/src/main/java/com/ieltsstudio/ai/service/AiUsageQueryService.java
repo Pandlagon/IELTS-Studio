@@ -25,7 +25,7 @@ import java.util.List;
  * <p>用于用户中心展示当前周期 credits 与最近使用记录。</p>
  *
  * <p><b>只读语义：</b>查询不会创建 quota 行，也不会扣费。若当前周期 quota 不存在，
- * 返回默认视图（creditsTotal=30, creditsUsed=0, creditsRemaining=30）。</p>
+ * 返回默认视图（creditsTotal=100, creditsUsed=0, creditsRemaining=100）。</p>
  *
  * <p>不调用 {@code AiUsageGuard.getOrCreateCurrentQuota(...)}，避免用户仅打开页面就
  * 触发 quota 落库。{@code getOrCreateCurrentQuota} 是扣费路径专用。</p>
